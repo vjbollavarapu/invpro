@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('shopify_integration', '0001_initial'),
+        ('shopify_integration', '0002_initial'),
     ]
 
     operations = [

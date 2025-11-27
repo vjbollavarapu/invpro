@@ -31,8 +31,7 @@ class ShopifyIntegration(ShopifyBaseModel):
 
     store_url = models.CharField(
         max_length=255,
-        validators=[URLValidator()],
-        help_text="Primary Shopify store URL (e.g. https://mystore.myshopify.com)",
+        help_text="Primary Shopify store URL (e.g. mystore.myshopify.com or https://mystore.myshopify.com)",
     )
     api_key = models.CharField(max_length=255, help_text="Private app API key")
     api_secret = models.CharField(max_length=255, help_text="Private app API secret")

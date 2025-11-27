@@ -102,11 +102,49 @@ class ShopifyClient:
     def test_connection(self) -> bool:
         """Test Shopify connection and credentials"""
         try:
-            response = self._make_request('GET', 'shop.json')
-            return 'shop' in response
+            # Normalize store URL
+            store_url = self.store_url
+            if store_url.startswith(('http://', 'https://')):
+                store_url = store_url.split('://', 1)[1]
+            store_url = store_url.strip('/')
+            
+            # Build URL
+            url = f"https://{store_url}/admin/api/{self.api_version}/shop.json"
+            
+            # Make request with proper headers
+            headers = {
+                'X-Shopify-Access-Token': self.access_token,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            }
+            
+            logger.info(f"Testing Shopify connection: store_url={store_url}, api_version={self.api_version}, token_preview={self.access_token[:10]}...")
+            
+            response = self.session.get(url, headers=headers, timeout=30)
+            
+            if response.status_code == 200:
+                data = response.json()
+                return 'shop' in data
+            elif response.status_code == 401:
+                error_data = response.json() if response.text else {}
+                logger.error(f"Shopify authentication failed (401): {error_data}")
+                raise ShopifyAPIError(f"Invalid access token: {error_data.get('errors', 'Authentication failed')}")
+            elif response.status_code == 403:
+                logger.error(f"Shopify access denied (403): {response.text}")
+                raise ShopifyAPIError("Access denied. Check your app's API permissions.")
+            elif response.status_code == 404:
+                logger.error(f"Shopify store not found (404): {response.text}")
+                raise ShopifyAPIError(f"Store not found: {store_url}")
+            else:
+                error_data = response.json() if response.text else {}
+                logger.error(f"Shopify connection test failed ({response.status_code}): {error_data}")
+                raise ShopifyAPIError(f"Connection failed: {error_data.get('errors', response.text)}")
+                
+        except ShopifyAPIError:
+            raise
         except Exception as e:
             logger.error(f"Shopify connection test failed: {e}")
-            return False
+            raise ShopifyAPIError(f"Connection test failed: {str(e)}")
     
     def get_shop_info(self) -> Dict[str, Any]:
         """Get shop information"""

@@ -87,23 +87,65 @@ export function useShopifyConnect() {
       apiSecret: string
       accessToken: string
     }) => {
-      const response = await fetch("/api/integrations/shopify/connect", {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          storeUrl: credentials.storeUrl,
-          apiKey: credentials.apiKey,
-          apiSecret: credentials.apiSecret,
-          accessToken: credentials.accessToken,
-        }),
-      })
+      const headers = getAuthHeaders()
+      
+      try {
+        const response = await fetch("/api/integrations/shopify/connect", {
+          method: "POST",
+          headers: headers,
+          body: JSON.stringify({
+            storeUrl: credentials.storeUrl,
+            apiKey: credentials.apiKey,
+            apiSecret: credentials.apiSecret,
+            accessToken: credentials.accessToken,
+          }),
+        })
 
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}))
-        throw new Error(error.error || "Failed to connect to Shopify")
+        // Get response text first to handle both JSON and non-JSON responses
+        const responseText = await response.text()
+        let errorData = {}
+        
+        try {
+          errorData = responseText ? JSON.parse(responseText) : {}
+        } catch (e) {
+          // If not JSON, use the text as error message
+          errorData = { error: responseText || `HTTP ${response.status}: ${response.statusText}` }
+        }
+
+        if (!response.ok) {
+          console.error("Shopify connect error:", {
+            status: response.status,
+            statusText: response.statusText,
+            error: errorData,
+            responseText: responseText,
+            hasAuth: !!headers['Authorization'],
+            hasTenant: !!headers['X-Tenant-ID'],
+          })
+          
+          // Build error message from various possible fields
+          const errorMessage = 
+            errorData.error || 
+            errorData.detail || 
+            errorData.message ||
+            (response.status === 401 ? "Authentication failed. Please log in again." :
+             response.status === 403 ? "Access denied. Please check your permissions." :
+             response.status === 404 ? "API endpoint not found. Please check the configuration." :
+             response.status >= 500 ? "Server error. Please try again later." :
+             `Failed to connect to Shopify (${response.status})`)
+          
+          throw new Error(errorMessage)
+        }
+
+        // Parse successful response
+        return responseText ? JSON.parse(responseText) : {}
+      } catch (error) {
+        // Handle network errors or other exceptions
+        if (error instanceof Error) {
+          console.error("Shopify connect exception:", error)
+          throw error
+        }
+        throw new Error("Failed to connect to Shopify: " + String(error))
       }
-
-      return response.json()
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["shopify"] })

@@ -267,6 +267,10 @@ $RECYCLE.BIN/
 # PROJECT SPECIFIC
 # ==========================================
 
+# Shopify credentials (never commit these!)
+.shopify
+*.shopify
+
 # Seed data outputs (if you generate files)
 apps/backend/seed_output/
 

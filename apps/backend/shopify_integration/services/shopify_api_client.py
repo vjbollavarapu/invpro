@@ -29,7 +29,9 @@ class ShopifyApiClient:
     def __init__(self, integration, *, session: requests.Session | None = None) -> None:
         self.integration = integration
         self.session = session or requests.Session()
-        self.rate_limiter = RateLimiter(namespace=f"shopify_{integration.id}")
+        # Use integration ID if available, otherwise use a temporary identifier
+        integration_id = getattr(integration, 'id', None) or f"temp_{id(integration)}"
+        self.rate_limiter = RateLimiter(namespace=f"shopify_{integration_id}")
 
     def fetch_products(self, *, updated_after=None, limit: int = 250) -> Iterable[dict[str, Any]]:
         """Fetch products with pagination support."""
@@ -65,16 +67,44 @@ class ShopifyApiClient:
     def test_connection(self) -> dict[str, Any]:
         """Test the Shopify connection by fetching shop information."""
         try:
+            # Log connection test details for debugging
+            logger.info(
+                "Testing Shopify connection: store_url=%s, has_token=%s, api_version=%s",
+                self.integration.store_url,
+                bool(self.integration.access_token),
+                self.integration.api_version,
+            )
             response = self._request("GET", "shop.json", retry=False)
+            shop_data = response.get("shop", {})
             return {
                 "success": True,
-                "shop": response.get("shop", {}),
-                "message": "Connection successful",
+                "shop": shop_data,
+                "message": f"Connection successful - Connected to {shop_data.get('name', 'Shopify store')}",
             }
         except ShopifyApiError as exc:
+            error_str = str(exc)
+            # Parse error message for better user feedback
+            if "401" in error_str or "Unauthorized" in error_str:
+                message = "Invalid access token. Please verify your access token is correct and has not expired."
+            elif "403" in error_str or "Forbidden" in error_str:
+                message = "Access denied. Please check that your app has the required API permissions (scopes)."
+            elif "404" in error_str or "Not Found" in error_str:
+                message = f"Store not found. Please verify the store URL: {self.integration.store_url}"
+            elif "429" in error_str or "rate limit" in error_str.lower():
+                message = "Rate limit exceeded. Please wait a moment and try again."
+            else:
+                message = f"Connection failed: {error_str}"
+            
             return {
                 "success": False,
-                "message": str(exc),
+                "message": message,
+                "error": "Connection failed",
+                "raw_error": error_str,
+            }
+        except Exception as exc:
+            return {
+                "success": False,
+                "message": f"Unexpected error: {str(exc)}",
                 "error": "Connection failed",
             }
 
@@ -159,6 +189,18 @@ class ShopifyApiClient:
             "X-Shopify-Access-Token": self.integration.access_token,
             "Content-Type": "application/json",
         }
+        
+        # Log request details for debugging (without sensitive data)
+        token_preview = self.integration.access_token[:20] + "..." if self.integration.access_token else "None"
+        logger.info(
+            "Shopify API request: method=%s, endpoint=%s, url=%s, token_preview=%s, store_url=%s, api_version=%s",
+            method,
+            endpoint,
+            url,
+            token_preview,
+            self.integration.store_url,
+            self.integration.api_version,
+        )
 
         # Retry logic with exponential backoff
         last_exception = None
@@ -169,8 +211,23 @@ class ShopifyApiClient:
                 if response.status_code >= 400:
                     # Don't retry on 4xx errors (client errors)
                     if 400 <= response.status_code < 500:
-                        logger.error("Shopify API client error %s: %s", response.status_code, response.text)
-                        raise ShopifyApiError(response.text)
+                        error_text = response.text
+                        # Log full error details for debugging
+                        logger.error(
+                            "Shopify API client error %s: %s",
+                            response.status_code,
+                            error_text,
+                            extra={
+                                'url': url,
+                                'method': method,
+                                'endpoint': endpoint,
+                                'store_url': self.integration.store_url,
+                                'api_version': self.integration.api_version,
+                                'token_length': len(self.integration.access_token) if self.integration.access_token else 0,
+                                'token_starts_with': self.integration.access_token[:10] if self.integration.access_token else None,
+                            }
+                        )
+                        raise ShopifyApiError(error_text)
                     
                     # Retry on 5xx errors (server errors)
                     if attempt < SHOPIFY_MAX_RETRY_ATTEMPTS - 1:
@@ -214,10 +271,15 @@ class ShopifyApiClient:
     def _build_url(self, endpoint: str) -> str:
         """Build Shopify API URL."""
         base_url = self.integration.store_url
-        if not base_url.startswith("http"):
-            base_url = f"https://{base_url.strip('/')}"
+        # Remove protocol if present, then add https://
+        if base_url.startswith(('http://', 'https://')):
+            base_url = base_url.split('://', 1)[1]
+        base_url = base_url.strip('/')
+        base_url = f"https://{base_url}"
         api_root = f"/admin/api/{self.integration.api_version}/"
-        return urljoin(base_url + "/", api_root + endpoint)
+        full_url = urljoin(base_url + "/", api_root + endpoint)
+        logger.debug(f"Built Shopify URL: {full_url}")
+        return full_url
 
     @staticmethod
     def _build_time_query(updated_after, *, limit: int) -> dict[str, Any]:

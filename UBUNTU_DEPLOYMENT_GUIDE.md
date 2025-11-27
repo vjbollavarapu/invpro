@@ -147,29 +147,65 @@ sudo chown invpro:invpro /var/www/invpro
 cd /var/www/invpro
 ```
 
-### 4.2 Clone or Upload Backend Code
+### 4.2 Clone Backend and Frontend Code (Sparse Checkout)
 
-**Option A: Using Git (if repository is on GitHub/GitLab)**
+**Recommended: Using Git Sparse Checkout (only downloads backend and frontend)**
 
 ```bash
-git clone https://github.com/yourusername/invpro.git .
-# Or clone only backend
-git clone https://github.com/yourusername/invpro.git temp
-mv temp/apps/backend /var/www/invpro/backend
-rm -rf temp
+cd /var/www/invpro
+
+# Initialize git repository
+git init
+git remote add origin https://github.com/yourusername/invpro.git
+# Or using SSH:
+# git remote add origin git@github.com:yourusername/invpro.git
+
+# Enable sparse checkout (only download specific directories)
+git config core.sparseCheckout true
+
+# Specify which directories to checkou
+cat > .git/info/sparse-checkout << EOF
+apps/backend/*
+apps/frontend/*
+docker-compose.yml
+.gitignore
+EOF
+
+# Fetch and checkout from main branch
+git fetch origin main
+git checkout main
+
+# Verify structure
+ls -la apps/
+# Should show: backend/  frontend/
 ```
 
-**Option B: Using SCP (from your local machine)**
+**Alternative: Using Git Archive (if you don't need git history on server)**
+
+```bash
+# On your local machine, create archive:
+git archive --format=tar.gz --output=invpro-deploy.tar.gz HEAD apps/backend apps/frontend
+
+# Transfer to server:
+scp invpro-deploy.tar.gz invpro@your-server-ip:/var/www/invpro/
+
+# On server, extract:
+cd /var/www/invpro
+tar -xzf invpro-deploy.tar.gz
+rm invpro-deploy.tar.gz
+```
+
+**Alternative: Using SCP (from your local machine)**
 
 ```bash
 # From your local machine, run:
-scp -r apps/backend invpro@your-server-ip:/var/www/invpro/
+scp -r apps/backend apps/frontend invpro@your-server-ip:/var/www/invpro/apps/
 ```
 
 ### 4.3 Set Up Python Virtual Environment
 
 ```bash
-cd /var/www/invpro/backend
+cd /var/www/invpro/apps/backend
 python3.11 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
@@ -186,7 +222,7 @@ pip install gunicorn
 
 ```bash
 # Create .env file
-nano /var/www/invpro/backend/.env
+nano /var/www/invpro/apps/backend/.env
 ```
 
 Add the following content:
@@ -230,7 +266,7 @@ python3.11 -c "from django.core.management.utils import get_random_secret_key; p
 ### 4.6 Run Migrations
 
 ```bash
-cd /var/www/invpro/backend
+cd /var/www/invpro/apps/backend
 source venv/bin/activate
 python manage.py migrate
 python manage.py collectstatic --noinput
@@ -241,6 +277,52 @@ python manage.py collectstatic --noinput
 ```bash
 python manage.py createsuperuser
 ```
+
+### 4.8 Seed Initial Data (Recommended)
+
+To populate the database with test/demo data:
+
+```bash
+# Seed all data (general + pharmacy)
+python manage.py seed_data
+
+# Or seed specific types
+python manage.py seed_data --type=general    # General inventory data only
+python manage.py seed_data --type=pharmacy   # Pharmacy data only
+```
+
+**Default Login Credentials (after seeding):**
+- Email: `demo@example.com` / Password: `Demo123456`
+- Email: `test@example.com` / Password: `Test123456`
+- Email: `pharmacist@demo.com` / Password: `Pharma123456` (pharmacy)
+
+**See `PRODUCTION_SEED_DATA_GUIDE.md` for detailed information.**
+
+### 4.9 Fix Migration Permissions (If Needed)
+
+If you encounter a `PermissionError` when running migrations:
+
+```bash
+# Quick fix using the provided script
+cd /var/www/invpro
+bash fix_migration_permissions.sh
+
+# Or manually fix permissions
+cd /var/www/invpro/apps/backend
+
+# Find Django user
+DJANGO_USER=$(ps aux | grep "python.*manage.py" | grep -v grep | head -1 | awk '{print $1}' || echo "www-data")
+
+# Fix ownership and permissions
+sudo chown -R $DJANGO_USER:$DJANGO_USER shopify_integration/migrations/
+sudo chmod -R 775 shopify_integration/migrations/
+
+# Then run migrations
+source venv/bin/activate
+python manage.py migrate
+```
+
+**For detailed instructions, see:** `MIGRATION_PERMISSIONS_FIX.md`
 
 ---
 
@@ -262,31 +344,45 @@ npm --version
 
 ```bash
 # Create frontend directory
-sudo mkdir -p /var/www/invpro/frontend
-sudo chown invpro:invpro /var/www/invpro/frontend
-cd /var/www/invpro/frontend
+# Frontend directory already created with sparse checkout
+# Verify it exists:
+ls -la /var/www/invpro/apps/frontend/
+cd /var/www/invpro/apps/frontend
 ```
 
-### 5.3 Clone or Upload Frontend Code
+### 5.3 Frontend Code Already Cloned
 
-**Option A: Using Git**
+If you used sparse checkout in Step 4.2, the frontend code is already in `/var/www/invpro/apps/frontend/`.
+
+**Verify frontend is present:**
 
 ```bash
-# If you cloned the full repo earlier
-cp -r /var/www/invpro/apps/frontend/* /var/www/invpro/frontend/
+ls -la /var/www/invpro/apps/frontend/
+# Should show: package.json, next.config.mjs, app/, components/, etc.
+```
+
+**If frontend is missing, use one of these methods:**
+
+**Option A: Using Git Sparse Checkout (if not done in Step 4.2)**
+
+```bash
+cd /var/www/invpro
+git config core.sparseCheckout true
+echo "apps/frontend/*" >> .git/info/sparse-checkout
+git read-tree -mu HEAD
 ```
 
 **Option B: Using SCP (from your local machine)**
 
 ```bash
 # From your local machine:
-scp -r apps/frontend/* invpro@your-server-ip:/var/www/invpro/frontend/
+scp -r apps/frontend invpro@your-server-ip:/var/www/invpro/apps/
 ```
 
 ### 5.4 Install Dependencies
 
 ```bash
-cd /var/www/invpro/frontend
+cd /var/www/invpro/apps/frontend
 npm install --legacy-peer-deps
 ```
 
@@ -294,7 +390,7 @@ npm install --legacy-peer-deps
 
 ```bash
 # Create .env.local file
-nano /var/www/invpro/frontend/.env.local
+nano /var/www/invpro/apps/frontend/.env.local
 ```
 
 Add the following:
@@ -312,7 +408,7 @@ NEXT_TELEMETRY_DISABLED=1
 
 ```bash
 # Check if next.config exists
-cd /var/www/invpro/frontend
+cd /var/www/invpro/apps/frontend
 ls -la next.config.*
 
 # Edit the config file (could be .js, .mjs, or .ts)
@@ -356,7 +452,7 @@ module.exports = nextConfig
 ### 5.7 Build Frontend
 
 ```bash
-cd /var/www/invpro/frontend
+cd /var/www/invpro/apps/frontend
 npm run build
 ```
 
@@ -428,14 +524,14 @@ server {
 
     # Static files
     location /static/ {
-        alias /var/www/invpro/backend/staticfiles/;
+        alias /var/www/invpro/apps/backend/staticfiles/;
         expires 30d;
         add_header Cache-Control "public, immutable";
     }
 
     # Media files
     location /media/ {
-        alias /var/www/invpro/backend/media/;
+        alias /var/www/invpro/apps/backend/media/;
         expires 7d;
         add_header Cache-Control "public";
     }
@@ -554,9 +650,9 @@ After=network.target postgresql.service
 Type=notify
 User=invpro
 Group=invpro
-WorkingDirectory=/var/www/invpro/backend
-Environment="PATH=/var/www/invpro/backend/venv/bin"
-ExecStart=/var/www/invpro/backend/venv/bin/gunicorn \
+WorkingDirectory=/var/www/invpro/apps/backend
+Environment="PATH=/var/www/invpro/apps/backend/venv/bin"
+ExecStart=/var/www/invpro/apps/backend/venv/bin/gunicorn \
     --workers 4 \
     --bind 127.0.0.1:8000 \
     --timeout 120 \
@@ -589,7 +685,7 @@ After=network.target
 Type=simple
 User=invpro
 Group=invpro
-WorkingDirectory=/var/www/invpro/frontend
+WorkingDirectory=/var/www/invpro/apps/frontend
 Environment="NODE_ENV=production"
 Environment="PORT=3000"
 Environment="HOSTNAME=0.0.0.0"
@@ -612,7 +708,7 @@ After=network.target
 Type=simple
 User=invpro
 Group=invpro
-WorkingDirectory=/var/www/invpro/frontend/.next/standalone
+WorkingDirectory=/var/www/invpro/apps/frontend/.next/standalone
 Environment="NODE_ENV=production"
 Environment="PORT=3000"
 Environment="HOSTNAME=0.0.0.0"
@@ -628,8 +724,8 @@ WantedBy=multi-user.target
 1. Ensure `next.config.js` has `output: 'standalone'`
 2. Copy public and static files:
    ```bash
-   cp -r /var/www/invpro/frontend/.next/static /var/www/invpro/frontend/.next/standalone/.next/static
-   cp -r /var/www/invpro/frontend/public /var/www/invpro/frontend/.next/standalone/public
+   cp -r /var/www/invpro/apps/frontend/.next/static /var/www/invpro/apps/frontend/.next/standalone/.next/static
+   cp -r /var/www/invpro/apps/frontend/public /var/www/invpro/apps/frontend/.next/standalone/public
    ```
 
 ### 9.3 Create Celery Worker Service (Optional)
@@ -649,9 +745,9 @@ After=network.target redis.service
 Type=simple
 User=invpro
 Group=invpro
-WorkingDirectory=/var/www/invpro/backend
-Environment="PATH=/var/www/invpro/backend/venv/bin"
-ExecStart=/var/www/invpro/backend/venv/bin/celery -A backend worker -l info
+WorkingDirectory=/var/www/invpro/apps/backend
+Environment="PATH=/var/www/invpro/apps/backend/venv/bin"
+ExecStart=/var/www/invpro/apps/backend/venv/bin/celery -A backend worker -l info
 Restart=always
 RestartSec=10
 
@@ -676,9 +772,9 @@ After=network.target redis.service
 Type=simple
 User=invpro
 Group=invpro
-WorkingDirectory=/var/www/invpro/backend
-Environment="PATH=/var/www/invpro/backend/venv/bin"
-ExecStart=/var/www/invpro/backend/venv/bin/celery -A backend beat -l info
+WorkingDirectory=/var/www/invpro/apps/backend
+Environment="PATH=/var/www/invpro/apps/backend/venv/bin"
+ExecStart=/var/www/invpro/apps/backend/venv/bin/celery -A backend beat -l info
 Restart=always
 RestartSec=10
 
@@ -795,10 +891,13 @@ set -e
 
 echo "Starting deployment..."
 
+# Update from git (sparse checkout)
+cd /var/www/invpro
+git pull origin main
+
 # Backend deployment
-cd /var/www/invpro/backend
+cd /var/www/invpro/apps/backend
 source venv/bin/activate
-git pull origin main  # If using git
 pip install -r requirements.txt
 python manage.py migrate
 python manage.py collectstatic --noinput
@@ -807,8 +906,7 @@ sudo systemctl restart invpro-celery
 sudo systemctl restart invpro-celery-beat
 
 # Frontend deployment
-cd /var/www/invpro/frontend
-git pull origin main  # If using git
+cd /var/www/invpro/apps/frontend
 npm install --legacy-peer-deps
 npm run build
 
@@ -911,7 +1009,7 @@ sudo journalctl -u invpro-backend -n 50
 sudo netstat -tlnp | grep 8000
 
 # Test manually
-cd /var/www/invpro/backend
+cd /var/www/invpro/apps/backend
 source venv/bin/activate
 python manage.py runserver 0.0.0.0:8000
 ```
@@ -926,7 +1024,7 @@ sudo journalctl -u invpro-frontend -n 50
 sudo netstat -tlnp | grep 3000
 
 # Test manually
-cd /var/www/invpro/frontend
+cd /var/www/invpro/apps/frontend
 npm start
 ```
 
@@ -1049,7 +1147,7 @@ sudo systemctl status invpro-backend
 sudo systemctl status invpro-frontend
 
 # Run migrations
-cd /var/www/invpro/backend
+cd /var/www/invpro/apps/backend
 source venv/bin/activate
 python manage.py migrate
 
@@ -1110,14 +1208,14 @@ server {
 
     # Static files
     location /static/ {
-        alias /var/www/invpro/backend/staticfiles/;
+        alias /var/www/invpro/apps/backend/staticfiles/;
         expires 30d;
         add_header Cache-Control "public, immutable";
     }
 
     # Media files
     location /media/ {
-        alias /var/www/invpro/backend/media/;
+        alias /var/www/invpro/apps/backend/media/;
         expires 7d;
         add_header Cache-Control "public";
     }

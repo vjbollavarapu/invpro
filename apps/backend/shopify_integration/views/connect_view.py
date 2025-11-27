@@ -15,7 +15,7 @@ class ShopifyConnectView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     class InputSerializer(serializers.Serializer):
-        store_url = serializers.URLField()
+        store_url = serializers.CharField(max_length=255)
         api_key = serializers.CharField(max_length=255)
         api_secret = serializers.CharField(max_length=255)
         access_token = serializers.CharField(max_length=255, allow_blank=True, required=False)
@@ -27,6 +27,31 @@ class ShopifyConnectView(APIView):
         sync_customers = serializers.BooleanField(required=False)
         sync_inventory = serializers.BooleanField(required=False)
 
+        def validate_store_url(self, value):
+            """Normalize store URL - accept both full URL and domain only."""
+            if not value:
+                raise serializers.ValidationError("Store URL is required")
+            
+            # Remove protocol if present
+            value = value.strip().lower()
+            if value.startswith(('http://', 'https://')):
+                value = value.split('://', 1)[1]
+            
+            # Remove trailing slash
+            value = value.rstrip('/')
+            
+            # Validate format
+            if not value.endswith('.myshopify.com'):
+                raise serializers.ValidationError(
+                    "Store URL must end with .myshopify.com (e.g., mystore.myshopify.com)"
+                )
+            
+            # Remove any path
+            if '/' in value:
+                value = value.split('/')[0]
+            
+            return value
+
     def post(self, request, *args, **kwargs):
         serializer = self.InputSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -34,27 +59,86 @@ class ShopifyConnectView(APIView):
 
         tenant_id = self._resolve_tenant_id(request)
         
+        # Normalize store_url
+        store_url = payload['store_url']
+        
         # Create temporary integration for connection testing
+        access_token = payload.get('access_token', '').strip()
+        if not access_token:
+            return Response(
+                {
+                    'detail': 'Access token is required',
+                    'error': 'Please provide a valid Shopify access token',
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        
+        # Log credentials (without sensitive parts) for debugging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(
+            "Shopify connection attempt: store_url=%s, token_length=%d, token_preview=%s, api_version=%s",
+            store_url,
+            len(access_token),
+            access_token[:10] + "..." if len(access_token) > 10 else access_token,
+            payload.get('api_version', '2024-10'),
+        )
+        
         temp_integration = ShopifyIntegration(
             tenant_id=tenant_id,
-            store_url=payload['store_url'],
+            store_url=store_url,
             api_key=payload['api_key'],
             api_secret=payload['api_secret'],
-            access_token=payload.get('access_token', ''),
+            access_token=access_token,
             api_version=payload.get('api_version', '2024-10'),
         )
         
+        # Verify access token is set correctly
+        if not temp_integration.access_token or temp_integration.access_token != access_token:
+            logger.error(
+                "Access token mismatch: expected_length=%d, actual_length=%d",
+                len(access_token),
+                len(temp_integration.access_token) if temp_integration.access_token else 0,
+            )
+            return Response(
+                {
+                    'detail': 'Access token validation failed',
+                    'error': 'Access token was not set correctly. Please check your input.',
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        
         # Test connection if access token is provided
         if temp_integration.access_token:
-            client = ShopifyApiClient(temp_integration)
-            test_result = client.test_connection()
-            
-            if not test_result.get('success'):
+            try:
+                client = ShopifyApiClient(temp_integration)
+                test_result = client.test_connection()
+                
+                if not test_result.get('success'):
+                    error_msg = test_result.get('message', 'Unknown error')
+                    # Provide more helpful error messages
+                    if '401' in str(error_msg) or 'Unauthorized' in str(error_msg):
+                        error_msg = 'Invalid access token. Please check your credentials.'
+                    elif '404' in str(error_msg) or 'Not Found' in str(error_msg):
+                        error_msg = f'Store not found: {store_url}. Please verify your store URL.'
+                    elif '403' in str(error_msg) or 'Forbidden' in str(error_msg):
+                        error_msg = 'Access denied. Please check your API permissions and scopes.'
+                    
+                    return Response(
+                        {
+                            'detail': 'Connection test failed',
+                            'error': error_msg,
+                            'test_result': test_result,
+                            'hint': 'Please verify: 1) Store URL is correct, 2) Access token is valid, 3) App has required permissions',
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            except Exception as e:
                 return Response(
                     {
                         'detail': 'Connection test failed',
-                        'error': test_result.get('message', 'Unknown error'),
-                        'test_result': test_result,
+                        'error': f'Failed to connect to Shopify: {str(e)}',
+                        'hint': 'Please check: 1) Store URL format (mystore.myshopify.com), 2) Access token is valid, 3) Network connectivity',
                     },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
@@ -78,7 +162,7 @@ class ShopifyConnectView(APIView):
 
         integration, created = ShopifyIntegration.objects.update_or_create(
             tenant_id=tenant_id,
-            store_url=payload['store_url'],
+            store_url=store_url,
             defaults=defaults,
         )
 

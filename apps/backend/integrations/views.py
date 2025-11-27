@@ -6,7 +6,7 @@ from django.db import transaction
 import logging
 
 from .models import ShopifyIntegration, ShopifySyncLog
-from .shopify_client import ShopifyClient
+from .shopify_client import ShopifyClient, ShopifyAPIError
 from .shopify_sync import ShopifySyncService
 
 logger = logging.getLogger(__name__)
@@ -30,26 +30,64 @@ class ShopifyConnectView(views.APIView):
                         status=status.HTTP_400_BAD_REQUEST
                     )
             
-            # Test connection first
-            client = ShopifyClient(
-                store_url=payload['store_url'],
-                access_token=payload['access_token']
-            )
+            # Normalize store URL
+            store_url = payload['store_url'].strip().lower()
+            if store_url.startswith(('http://', 'https://')):
+                store_url = store_url.split('://', 1)[1]
+            store_url = store_url.rstrip('/')
+            if '/' in store_url:
+                store_url = store_url.split('/')[0]
             
-            if not client.test_connection():
+            # Validate store URL format
+            if not store_url.endswith('.myshopify.com'):
                 return Response(
-                    {'error': 'Invalid Shopify credentials or store URL'},
+                    {'error': 'Store URL must end with .myshopify.com (e.g., mystore.myshopify.com)'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Normalize access token
+            access_token = payload['access_token'].strip()
+            if not access_token:
+                return Response(
+                    {'error': 'Access token is required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Test connection first
+            try:
+                client = ShopifyClient(
+                    store_url=store_url,
+                    access_token=access_token,
+                    api_version='2024-10'  # Use latest API version
+                )
+                
+                connection_result = client.test_connection()
+                if not connection_result:
+                    return Response(
+                        {'error': 'Connection test failed. Please verify your access token and store URL.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            except ShopifyAPIError as e:
+                logger.error(f"Shopify connection test error: {e}")
+                return Response(
+                    {'error': str(e)},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            except Exception as e:
+                logger.error(f"Shopify connection test error: {e}")
+                return Response(
+                    {'error': f'Connection test failed: {str(e)}'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
             # Create or update integration
             integration, created = ShopifyIntegration.objects.update_or_create(
                 tenant_id=tenant.id,
-                store_url=payload['store_url'],
+                store_url=store_url,
                 defaults={
-                    'api_key': payload['api_key'],
-                    'api_secret': payload['api_secret'],
-                    'access_token': payload['access_token'],
+                    'api_key': payload['api_key'].strip(),
+                    'api_secret': payload['api_secret'].strip(),
+                    'access_token': access_token,
                     'status': 'CONNECTED',
                     'last_sync': timezone.now(),
                     'error_count': 0,

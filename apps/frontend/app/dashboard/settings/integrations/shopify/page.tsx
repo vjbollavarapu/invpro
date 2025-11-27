@@ -32,11 +32,15 @@ import {
   TrendingUp,
   Zap,
   X,
+  Eye,
+  EyeOff,
 } from "lucide-react"
 import { useShopifyStatus, useShopifyConnect, useShopifyDisconnect, useShopifySync, useShopifySyncLogs } from "@/lib/hooks/useShopify"
 
 export default function ShopifyIntegrationPage() {
   const [isConnectOpen, setIsConnectOpen] = useState(false)
+  const [showApiSecret, setShowApiSecret] = useState(false)
+  const [showAccessToken, setShowAccessToken] = useState(false)
   const [credentials, setCredentials] = useState({
     storeUrl: "",
     apiKey: "",
@@ -197,26 +201,60 @@ export default function ShopifyIntegrationPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="apiSecret">API Secret</Label>
-              <Input
-                id="apiSecret"
-                type="password"
-                placeholder="Your API secret"
-                value={credentials.apiSecret}
-                onChange={(e) => setCredentials({ ...credentials, apiSecret: e.target.value })}
-              />
+              <div className="relative">
+                <Input
+                  id="apiSecret"
+                  type={showApiSecret ? "text" : "password"}
+                  placeholder="Your API secret"
+                  value={credentials.apiSecret}
+                  onChange={(e) => setCredentials({ ...credentials, apiSecret: e.target.value })}
+                  className="pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  onClick={() => setShowApiSecret(!showApiSecret)}
+                  aria-label={showApiSecret ? "Hide API secret" : "Show API secret"}
+                >
+                  {showApiSecret ? (
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </Button>
+              </div>
               <p className="text-xs text-muted-foreground">
                 Your Shopify API secret (Client Secret)
               </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="accessToken">Access Token</Label>
-              <Input
-                id="accessToken"
-                type="password"
-                placeholder="Your access token"
-                value={credentials.accessToken}
-                onChange={(e) => setCredentials({ ...credentials, accessToken: e.target.value })}
-              />
+              <div className="relative">
+                <Input
+                  id="accessToken"
+                  type={showAccessToken ? "text" : "password"}
+                  placeholder="Your access token"
+                  value={credentials.accessToken}
+                  onChange={(e) => setCredentials({ ...credentials, accessToken: e.target.value })}
+                  className="pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  onClick={() => setShowAccessToken(!showAccessToken)}
+                  aria-label={showAccessToken ? "Hide access token" : "Show access token"}
+                >
+                  {showAccessToken ? (
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </Button>
+              </div>
               <p className="text-xs text-muted-foreground">
                 Your Shopify Admin API access token
               </p>
@@ -285,23 +323,57 @@ export default function ShopifyIntegrationPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="card-apiSecret">API Secret</Label>
-              <Input
-                id="card-apiSecret"
-                type="password"
-                placeholder="Your API secret"
-                value={credentials.apiSecret}
-                onChange={(e) => setCredentials({ ...credentials, apiSecret: e.target.value })}
-              />
+              <div className="relative">
+                <Input
+                  id="card-apiSecret"
+                  type={showApiSecret ? "text" : "password"}
+                  placeholder="Your API secret"
+                  value={credentials.apiSecret}
+                  onChange={(e) => setCredentials({ ...credentials, apiSecret: e.target.value })}
+                  className="pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  onClick={() => setShowApiSecret(!showApiSecret)}
+                  aria-label={showApiSecret ? "Hide API secret" : "Show API secret"}
+                >
+                  {showApiSecret ? (
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </Button>
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="card-accessToken">Access Token</Label>
-              <Input
-                id="card-accessToken"
-                type="password"
-                placeholder="Your access token"
-                value={credentials.accessToken}
-                onChange={(e) => setCredentials({ ...credentials, accessToken: e.target.value })}
-              />
+              <div className="relative">
+                <Input
+                  id="card-accessToken"
+                  type={showAccessToken ? "text" : "password"}
+                  placeholder="Your access token"
+                  value={credentials.accessToken}
+                  onChange={(e) => setCredentials({ ...credentials, accessToken: e.target.value })}
+                  className="pr-10"
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  onClick={() => setShowAccessToken(!showAccessToken)}
+                  aria-label={showAccessToken ? "Hide access token" : "Show access token"}
+                >
+                  {showAccessToken ? (
+                    <EyeOff className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </Button>
+              </div>
             </div>
             <Button
               onClick={handleConnect}
