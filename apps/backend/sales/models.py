@@ -16,10 +16,33 @@ class Customer(TenantAwareModel):
     shopify_created_at = models.DateTimeField(null=True, blank=True, help_text="Shopify creation date")
     shopify_updated_at = models.DateTimeField(null=True, blank=True, help_text="Shopify last update date")
     
+    # Source tracking for multi-integration support
+    data_source = models.CharField(
+        max_length=50,
+        choices=[
+            ('shopify', 'Shopify'),
+            ('xero', 'Xero'),
+            ('manual', 'Manual'),
+        ],
+        default='manual',
+        help_text="Source of this customer data",
+    )
+    source_id = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="ID of the source record in the integration table (e.g., ShopifyCustomer.id)",
+    )
+    last_imported_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp of last import from integration source",
+    )
+    
     class Meta:
         unique_together = ('tenant_id', 'customer_code')
         indexes = [
             models.Index(fields=['tenant_id', 'customer_code']),
+            models.Index(fields=['data_source', 'source_id'], name='customer_source_idx'),
         ]
     
     def save(self, *args, **kwargs):
@@ -67,6 +90,28 @@ class Order(TenantAwareModel):
     shopify_financial_status = models.CharField(max_length=50, blank=True, help_text="Shopify financial status")
     shopify_fulfillment_status = models.CharField(max_length=50, blank=True, help_text="Shopify fulfillment status")
     
+    # Source tracking for multi-integration support
+    data_source = models.CharField(
+        max_length=50,
+        choices=[
+            ('shopify', 'Shopify'),
+            ('xero', 'Xero'),
+            ('manual', 'Manual'),
+        ],
+        default='manual',
+        help_text="Source of this order data",
+    )
+    source_id = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="ID of the source record in the integration table (e.g., ShopifyOrder.id)",
+    )
+    last_imported_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp of last import from integration source",
+    )
+    
     class Meta:
         unique_together = ('tenant_id', 'order_number')
         ordering = ['-created_at']
@@ -74,6 +119,7 @@ class Order(TenantAwareModel):
             models.Index(fields=['tenant_id', 'order_number']),
             models.Index(fields=['tenant_id', 'status']),
             models.Index(fields=['tenant_id', '-created_at']),
+            models.Index(fields=['data_source', 'source_id'], name='order_source_idx'),
         ]
     
     def save(self, *args, **kwargs):

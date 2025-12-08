@@ -23,7 +23,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts"
-import { FileText, FileSpreadsheet, Calendar, TrendingUp, Package, ShoppingCart, DollarSign, Download } from "lucide-react"
+import { FileText, FileSpreadsheet, Calendar, TrendingUp, Package, ShoppingCart, DollarSign, Download, Sparkles } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { 
   useInventoryReport, 
@@ -33,6 +33,8 @@ import {
   useFinanceReport,
   useExportReport
 } from "@/lib/hooks/useReports"
+import { useProducts } from "@/lib/hooks/useProducts"
+import { ZeroBullshitReport } from "@/components/reports/zero-bullshit-report"
 
 export default function ReportsPage() {
   const { toast } = useToast()
@@ -46,7 +48,18 @@ export default function ReportsPage() {
   const { data: warehouseData, isLoading: warehouseLoading } = useWarehouseReport(dateRange)
   const { data: financeData, isLoading: financeLoading } = useFinanceReport(dateRange)
 
+  // Fetch products for zero-bullshit report
+  const { data: lowStockData } = useProducts({ stockStatus: 'low', pageSize: 100 })
+  const { data: outOfStockData } = useProducts({ stockStatus: 'out', pageSize: 100 })
+  const { data: allProductsData } = useProducts({ pageSize: 1000 }) // Get all for slow-moving analysis
+
   const exportReport = useExportReport()
+
+  // Calculate slow-moving items (high stock, no recent sales)
+  const slowMovingItems = (allProductsData?.data || []).filter((product: any) => {
+    // Products with high stock but no sales in last 30 days
+    return product.quantity > product.reorder_level * 3 && product.quantity > 50
+  }).slice(0, 10)
 
   const handleExport = async (reportType: string) => {
     try {
@@ -159,8 +172,12 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      <Tabs defaultValue="inventory" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5">
+      <Tabs defaultValue="zero-bullshit" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-6">
+          <TabsTrigger value="zero-bullshit">
+            <Sparkles className="mr-2 h-4 w-4" />
+            What You Need to Know
+          </TabsTrigger>
           <TabsTrigger value="inventory">
             <Package className="mr-2 h-4 w-4" />
             Inventory
@@ -182,6 +199,20 @@ export default function ReportsPage() {
             Finance
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="zero-bullshit" className="space-y-6">
+          {inventoryLoading || salesLoading ? (
+            <LoadingSkeleton />
+          ) : (
+            <ZeroBullshitReport
+              inventoryData={inventoryData}
+              salesData={salesData}
+              lowStockItems={lowStockData?.data || []}
+              outOfStockItems={outOfStockData?.data || []}
+              slowMovingItems={slowMovingItems}
+            />
+          )}
+        </TabsContent>
 
         <TabsContent value="inventory" className="space-y-6">
           <div className="flex justify-between items-center">

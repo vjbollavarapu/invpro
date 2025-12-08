@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -37,6 +37,7 @@ import {
   useIntegrationSettings, 
   useUpdateIntegrationSettings 
 } from "@/lib/hooks/useSettings"
+import { useShopifyStatus } from "@/lib/hooks/useShopify"
 
 export default function SettingsPage() {
   const { toast } = useToast()
@@ -47,6 +48,7 @@ export default function SettingsPage() {
   // Fetch real data using hooks
   const { data: systemSettings, isLoading: systemLoading } = useSystemSettings()
   const { data: integrationSettings, isLoading: integrationLoading } = useIntegrationSettings()
+  const { data: shopifyStatus, isLoading: shopifyLoading } = useShopifyStatus()
 
   // Mutations
   const updateSystemSettings = useUpdateSystemSettings()
@@ -62,11 +64,28 @@ export default function SettingsPage() {
     currency: "USD",
   })
 
+  // Initialize integrations state with real Shopify status
   const [integrations, setIntegrations] = useState({
-    shopify: { connected: false, lastSync: "Never" },
+    shopify: { 
+      connected: shopifyStatus?.connected || false, 
+      lastSync: shopifyStatus?.last_sync_at || "Never" 
+    },
     stripe: { connected: false, lastSync: "Never" },
     email: { connected: false, lastSync: "Never" },
   })
+
+  // Update integrations when Shopify status changes
+  useEffect(() => {
+    if (shopifyStatus) {
+      setIntegrations(prev => ({
+        ...prev,
+        shopify: {
+          connected: shopifyStatus.connected || false,
+          lastSync: shopifyStatus.last_sync_at || shopifyStatus.last_successful_sync || "Never"
+        }
+      }))
+    }
+  }, [shopifyStatus])
 
   const [preferences, setPreferences] = useState({
     theme: "system",
@@ -355,9 +374,13 @@ export default function SettingsPage() {
                         </div>
                       </div>
                       <div className="flex items-center gap-3">
-                        <Badge variant={integrations.shopify.connected ? "default" : "secondary"}>
-                          {integrations.shopify.connected ? "Connected" : "Disconnected"}
-                        </Badge>
+                        {shopifyLoading ? (
+                          <Skeleton className="h-5 w-24" />
+                        ) : (
+                          <Badge variant={integrations.shopify.connected ? "default" : "secondary"}>
+                            {integrations.shopify.connected ? "Connected" : "Disconnected"}
+                          </Badge>
+                        )}
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-medium group-hover:text-primary">
                             {integrations.shopify.connected ? "Manage" : "Connect"}

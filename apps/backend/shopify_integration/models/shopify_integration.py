@@ -130,3 +130,32 @@ class ShopifyIntegration(ShopifyBaseModel):
         if self.error_count > 0:
             self.error_count = 0
         self.save(update_fields=["last_sync_at", "last_successful_sync", "status", "error_count", "updated_at"])
+
+    def has_credentials(self) -> bool:
+        """Check if all required credentials are present."""
+        return bool(
+            self.api_key and
+            self.api_secret and
+            self.access_token and
+            len(self.api_key.strip()) > 0 and
+            len(self.api_secret.strip()) > 0 and
+            len(self.access_token.strip()) > 0
+        )
+
+    def get_credentials_status(self) -> dict:
+        """Get status of stored credentials without exposing them."""
+        return {
+            "api_key": {
+                "present": bool(self.api_key),
+                "length": len(self.api_key) if self.api_key else 0,
+            },
+            "api_secret": {
+                "present": bool(self.api_secret),
+                "length": len(self.api_secret) if self.api_secret else 0,
+            },
+            "access_token": {
+                "present": bool(self.access_token),
+                "length": len(self.access_token) if self.access_token else 0,
+            },
+            "all_present": self.has_credentials(),
+        }

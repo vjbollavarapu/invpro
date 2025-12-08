@@ -41,11 +41,37 @@ export interface ShopifySyncResult {
   sync_log_id?: number
 }
 
+export interface ShopifyProduct {
+  id: number
+  shopify_product_id: string
+  title: string
+  status: string
+  product_type?: string
+  vendor?: string
+  tags?: string
+  handle?: string
+  price_min?: string
+  price_max?: string
+  variants?: any[]
+  images?: any[]
+  synced_at?: string
+  published_at?: string
+  created_at: string
+  updated_at: string
+}
+
 // Helper function to get auth headers
 function getAuthHeaders() {
   const token = localStorage.getItem("invpro_token")
   const tenantData = localStorage.getItem("invpro_current_tenant")
   const tenant = tenantData ? JSON.parse(tenantData) : null
+
+  if (!token) {
+    // No token, redirect to login
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login'
+    }
+  }
 
   return {
     'Content-Type': 'application/json',
@@ -225,6 +251,7 @@ export function useShopifySync() {
     },
     onSuccess: (data: ShopifySyncResult) => {
       queryClient.invalidateQueries({ queryKey: ["shopify"] })
+      queryClient.invalidateQueries({ queryKey: ["shopify", "logs"] })  // Refresh sync logs
       queryClient.invalidateQueries({ queryKey: ["products"] })
       queryClient.invalidateQueries({ queryKey: ["orders"] })
       queryClient.invalidateQueries({ queryKey: ["customers"] })
@@ -296,4 +323,95 @@ export function useShopifySyncInventory() {
     ...sync,
     mutate: () => sync.mutate({ type: "inventory" }),
   }
+}
+
+// Shopify Products Hook
+export function useShopifyProducts(options: {
+  search?: string
+  status?: string
+  vendor?: string
+  product_type?: string
+  ordering?: string
+  page?: number
+  pageSize?: number
+} = {}) {
+  return useQuery({
+    queryKey: ["shopify", "products", options],
+    queryFn: async (): Promise<{ results: ShopifyProduct[]; count: number; next?: string; previous?: string }> => {
+      const params = new URLSearchParams()
+      if (options.search) params.append("search", options.search)
+      if (options.status) params.append("status", options.status)
+      if (options.vendor) params.append("vendor", options.vendor)
+      if (options.product_type) params.append("product_type", options.product_type)
+      if (options.ordering) params.append("ordering", options.ordering)
+      if (options.page) params.append("page", options.page.toString())
+      if (options.pageSize) params.append("page_size", options.pageSize.toString())
+
+      const response = await fetch(`/api/integrations/shopify/products?${params.toString()}`, {
+        headers: getAuthHeaders(),
+      })
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}))
+        throw new Error(error.error || "Failed to fetch Shopify products")
+      }
+
+      return response.json()
+    },
+    staleTime: 30 * 1000, // 30 seconds
+  })
+}
+
+// Shopify Import Hook - Import synced data to common tables
+export function useShopifyImport() {
+  const { toast } = useToast()
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (options: {
+      entity_type: 'products' | 'orders' | 'customers'
+      product_ids?: number[]
+      order_ids?: number[]
+      customer_ids?: number[]
+      merge_strategy?: 'last_write_wins' | 'skip' | 'overwrite'
+    }) => {
+      const response = await fetch("/api/integrations/shopify/import", {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          entity_type: options.entity_type,
+          product_ids: options.product_ids,
+          order_ids: options.order_ids,
+          customer_ids: options.customer_ids,
+          merge_strategy: options.merge_strategy || 'last_write_wins',
+        }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}))
+        throw new Error(error.error || "Failed to import Shopify data")
+      }
+
+      return response.json()
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["shopify"] })
+      queryClient.invalidateQueries({ queryKey: ["products"] })
+      queryClient.invalidateQueries({ queryKey: ["orders"] })
+      queryClient.invalidateQueries({ queryKey: ["customers"] })
+      
+      toast({
+        title: data.success ? "Success" : "Warning",
+        description: data.message || `Imported ${data.created || 0} items`,
+        variant: data.success ? "default" : "destructive",
+      })
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      })
+    },
+  })
 }

@@ -5,48 +5,18 @@ import { Check } from "lucide-react"
 
 const plans = [
   {
-    name: "Starter",
-    price: "$49",
-    description: "Perfect for small businesses",
+    name: "Operator Plan",
+    price: "$39",
+    description: "Everything you need to keep stock tight and sales smooth.",
     features: [
-      "Up to 1,000 SKUs",
-      "2 warehouse locations",
-      "5 team members",
-      "Basic reporting",
-      "Email support",
-      "Mobile app access",
-    ],
-  },
-  {
-    name: "Professional",
-    price: "$149",
-    description: "For growing businesses",
-    features: [
-      "Up to 10,000 SKUs",
-      "10 warehouse locations",
-      "25 team members",
-      "Advanced analytics",
-      "Priority support",
-      "API access",
-      "Custom integrations",
-      "Automated workflows",
+      "Real-time multi-channel sync",
+      "Low-stock alerts & smart POs",
+      "Clean accounting mappings (Xero/QBO)",
+      "Zero-bullshit reports",
+      "One dashboard, one source of truth",
+      "Cancel anytime",
     ],
     popular: true,
-  },
-  {
-    name: "Enterprise",
-    price: "Custom",
-    description: "For large organizations",
-    features: [
-      "Unlimited SKUs",
-      "Unlimited warehouses",
-      "Unlimited team members",
-      "Custom reporting",
-      "24/7 dedicated support",
-      "Advanced API access",
-      "White-label options",
-      "SLA guarantee",
-    ],
   },
 ]
 
@@ -56,14 +26,14 @@ export function LandingPricing() {
       <div className="container mx-auto px-4">
         <div className="mx-auto max-w-2xl text-center mb-16">
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl md:text-5xl mb-4 text-balance">
-            Simple, transparent pricing
+            Simple pricing. No surprises. No BS.
           </h2>
           <p className="text-lg text-muted-foreground text-balance">
-            Choose the perfect plan for your business. All plans include a 14-day free trial.
+            Cancel anytime. If you're not saving hours and headaches, we don't want your money.
           </p>
         </div>
 
-        <div className="grid gap-8 lg:grid-cols-3">
+        <div className="grid gap-8 lg:grid-cols-1 max-w-md mx-auto">
           {plans.map((plan, index) => (
             <Card
               key={index}

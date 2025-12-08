@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,6 +10,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Pagination } from "@/components/ui/pagination"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   Dialog,
   DialogContent,
@@ -34,8 +36,237 @@ import {
   X,
   Eye,
   EyeOff,
+  Search,
 } from "lucide-react"
-import { useShopifyStatus, useShopifyConnect, useShopifyDisconnect, useShopifySync, useShopifySyncLogs } from "@/lib/hooks/useShopify"
+import { useShopifyStatus, useShopifyConnect, useShopifyDisconnect, useShopifySync, useShopifySyncLogs, useShopifyImport, useShopifyProducts, type ShopifyProduct } from "@/lib/hooks/useShopify"
+
+// Products List Component
+function ProductsList() {
+  const [searchQuery, setSearchQuery] = useState("")
+  const [statusFilter, setStatusFilter] = useState<string>("all")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize] = useState(20)
+  const syncMutation = useShopifySync()
+  const { data, isLoading, error } = useShopifyProducts({
+    search: searchQuery || undefined,
+    status: statusFilter !== "all" ? statusFilter : undefined,
+    page: currentPage,
+    pageSize: pageSize,
+  })
+
+  const handleSync = async (type: string = "products") => {
+    try {
+      await syncMutation.mutateAsync({ type })
+    } catch (error) {
+      // Error handled by mutation
+    }
+  }
+
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return "Never"
+    return new Date(dateString).toLocaleString()
+  }
+
+  const products = data?.results || []
+  const totalCount = data?.count || 0
+  const totalPages = Math.ceil(totalCount / pageSize)
+
+  // Reset to first page when search or filter changes
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery, statusFilter])
+
+  // Handle page changes
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page)
+  }
+
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Shopify Products</CardTitle>
+          <CardDescription>Products synced from your Shopify store</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            {[...Array(5)].map((_, i) => (
+              <Skeleton key={i} className="h-16 w-full" />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (error) {
+    return (
+      <Alert variant="destructive">
+        <AlertCircle className="h-4 w-4" />
+        <AlertDescription>
+          Failed to load products: {error instanceof Error ? error.message : "Unknown error"}
+        </AlertDescription>
+      </Alert>
+    )
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle>Shopify Products</CardTitle>
+            <CardDescription>
+              {totalCount} product{totalCount !== 1 ? 's' : ''} synced from your Shopify store
+            </CardDescription>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          {/* Search and Filters */}
+          <div className="flex gap-4">
+            <div className="flex-1">
+              <div className="relative">
+                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search products..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-8"
+                />
+              </div>
+            </div>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Filter by status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="archived">Archived</SelectItem>
+                <SelectItem value="draft">Draft</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Products Table */}
+          {products.length === 0 ? (
+            <div className="text-center py-12">
+              <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-medium mb-2">No products found</h3>
+              <p className="text-muted-foreground mb-4">
+                {searchQuery || statusFilter !== "all"
+                  ? "Try adjusting your search or filters"
+                  : "Sync products from Shopify to see them here"}
+              </p>
+              {!searchQuery && statusFilter === "all" && (
+                <Button onClick={() => handleSync("products")} variant="outline">
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Sync Products
+                </Button>
+              )}
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Product</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Vendor</TableHead>
+                  <TableHead>Price Range</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Variants</TableHead>
+                  <TableHead>Last Synced</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {products.map((product: ShopifyProduct) => (
+                  <TableRow key={product.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        {product.images && product.images.length > 0 ? (
+                          <img
+                            src={typeof product.images[0] === 'string' ? product.images[0] : (product.images[0] as any)?.src}
+                            alt={product.title}
+                            className="h-10 w-10 rounded object-cover"
+                          />
+                        ) : (
+                          <div className="h-10 w-10 rounded bg-muted flex items-center justify-center">
+                            <Package className="h-5 w-5 text-muted-foreground" />
+                          </div>
+                        )}
+                        <div>
+                          <div className="font-medium">{product.title}</div>
+                          {product.handle && (
+                            <div className="text-xs text-muted-foreground">
+                              {product.handle}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-sm">{product.product_type || "—"}</span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-sm">{product.vendor || "—"}</span>
+                    </TableCell>
+                    <TableCell>
+                      {product.price_min && product.price_max ? (
+                        <span className="text-sm">
+                          ${parseFloat(product.price_min).toFixed(2)} - ${parseFloat(product.price_max).toFixed(2)}
+                        </span>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={
+                          product.status === "active"
+                            ? "default"
+                            : product.status === "archived"
+                            ? "secondary"
+                            : "outline"
+                        }
+                      >
+                        {product.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-sm">
+                        {product.variants?.length || 0} variant{product.variants?.length !== 1 ? "s" : ""}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-sm text-muted-foreground">
+                        {product.synced_at ? formatDate(product.synced_at) : "Never"}
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+
+          {/* Pagination */}
+          {products.length > 0 && totalPages > 1 && (
+            <div className="mt-4">
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalItems={totalCount}
+                itemsPerPage={pageSize}
+                onPageChange={handlePageChange}
+              />
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
 
 export default function ShopifyIntegrationPage() {
   const [isConnectOpen, setIsConnectOpen] = useState(false)
@@ -54,6 +285,7 @@ export default function ShopifyIntegrationPage() {
   const connectMutation = useShopifyConnect()
   const disconnectMutation = useShopifyDisconnect()
   const syncMutation = useShopifySync()
+  const importMutation = useShopifyImport()
 
   const handleConnect = async () => {
     try {
@@ -76,6 +308,14 @@ export default function ShopifyIntegrationPage() {
   const handleSync = async (type: string = "full") => {
     try {
       await syncMutation.mutateAsync({ type })
+    } catch (error) {
+      // Error handled by mutation
+    }
+  }
+
+  const handleImport = async (entityType: 'products' | 'orders' | 'customers') => {
+    try {
+      await importMutation.mutateAsync({ entity_type: entityType })
     } catch (error) {
       // Error handled by mutation
     }
@@ -398,6 +638,7 @@ export default function ShopifyIntegrationPage() {
       <Tabs defaultValue="overview" className="space-y-6">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="products">Products</TabsTrigger>
           <TabsTrigger value="sync">Sync</TabsTrigger>
           <TabsTrigger value="logs">Sync Logs</TabsTrigger>
         </TabsList>
@@ -499,78 +740,131 @@ export default function ShopifyIntegrationPage() {
 
         <TabsContent value="sync" className="space-y-6">
           {status?.connected ? (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">Full Sync</CardTitle>
-                  <CardDescription>Sync all data from Shopify</CardDescription>
+            <>
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium">Full Sync</CardTitle>
+                    <CardDescription>Sync all data from Shopify</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button
+                      className="w-full"
+                      onClick={() => handleSync("full")}
+                      disabled={syncMutation.isPending}
+                    >
+                      <RefreshCw className={`mr-2 h-4 w-4 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
+                      Sync All
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium">Products</CardTitle>
+                    <CardDescription>Sync products and variants</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button
+                      className="w-full"
+                      variant="outline"
+                      onClick={() => handleSync("products")}
+                      disabled={syncMutation.isPending}
+                    >
+                      <Package className="mr-2 h-4 w-4" />
+                      Sync Products
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium">Orders</CardTitle>
+                    <CardDescription>Sync orders and line items</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button
+                      className="w-full"
+                      variant="outline"
+                      onClick={() => handleSync("orders")}
+                      disabled={syncMutation.isPending}
+                    >
+                      <ShoppingBag className="mr-2 h-4 w-4" />
+                      Sync Orders
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium">Customers</CardTitle>
+                    <CardDescription>Sync customer data</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Button
+                      className="w-full"
+                      variant="outline"
+                      onClick={() => handleSync("customers")}
+                      disabled={syncMutation.isPending}
+                    >
+                      <Users className="mr-2 h-4 w-4" />
+                      Sync Customers
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Import Section - Optional manual import */}
+              <Card className="border-2 border-dashed">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Package className="h-5 w-5" />
+                    Manual Import (Optional)
+                  </CardTitle>
+                  <CardDescription>
+                    Products are automatically imported to inventory when you sync. Use this section 
+                    only if you need to manually re-import already synced products.
+                  </CardDescription>
                 </CardHeader>
-                <CardContent>
+              <CardContent>
+                <div className="grid gap-4 md:grid-cols-3">
                   <Button
                     className="w-full"
-                    onClick={() => handleSync("full")}
-                    disabled={syncMutation.isPending}
+                    onClick={() => handleImport("products")}
+                    disabled={importMutation.isPending}
                   >
-                    <RefreshCw className={`mr-2 h-4 w-4 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
-                    Sync All
+                    <Package className={`mr-2 h-4 w-4 ${importMutation.isPending ? 'animate-spin' : ''}`} />
+                    {importMutation.isPending ? "Importing..." : "Import Products"}
                   </Button>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">Products</CardTitle>
-                  <CardDescription>Sync products and variants</CardDescription>
-                </CardHeader>
-                <CardContent>
                   <Button
                     className="w-full"
                     variant="outline"
-                    onClick={() => handleSync("products")}
-                    disabled={syncMutation.isPending}
-                  >
-                    <Package className="mr-2 h-4 w-4" />
-                    Sync Products
-                  </Button>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">Orders</CardTitle>
-                  <CardDescription>Sync orders and line items</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Button
-                    className="w-full"
-                    variant="outline"
-                    onClick={() => handleSync("orders")}
-                    disabled={syncMutation.isPending}
+                    onClick={() => handleImport("orders")}
+                    disabled={importMutation.isPending}
                   >
                     <ShoppingBag className="mr-2 h-4 w-4" />
-                    Sync Orders
+                    Import Orders
                   </Button>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">Customers</CardTitle>
-                  <CardDescription>Sync customer data</CardDescription>
-                </CardHeader>
-                <CardContent>
                   <Button
                     className="w-full"
                     variant="outline"
-                    onClick={() => handleSync("customers")}
-                    disabled={syncMutation.isPending}
+                    onClick={() => handleImport("customers")}
+                    disabled={importMutation.isPending}
                   >
                     <Users className="mr-2 h-4 w-4" />
-                    Sync Customers
+                    Import Customers
                   </Button>
-                </CardContent>
-              </Card>
-            </div>
+                </div>
+                <Alert className="mt-4">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    <strong>Note:</strong> Products are automatically imported to your Inventory page when you sync. 
+                    Use manual import only if you need to re-import already synced products.
+                  </AlertDescription>
+                </Alert>
+              </CardContent>
+            </Card>
+            </>
           ) : (
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-12">
@@ -578,6 +872,26 @@ export default function ShopifyIntegrationPage() {
                 <h3 className="text-lg font-medium mb-2">No Shopify Connection</h3>
                 <p className="text-muted-foreground text-center mb-4">
                   Connect to your Shopify store to start syncing data
+                </p>
+                <Button onClick={() => setIsConnectOpen(true)}>
+                  <Zap className="mr-2 h-4 w-4" />
+                  Connect Shopify
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="products" className="space-y-6">
+          {status?.connected ? (
+            <ProductsList />
+          ) : (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <Package className="h-12 w-12 text-muted-foreground mb-4" />
+                <h3 className="text-lg font-medium mb-2">No Shopify Connection</h3>
+                <p className="text-muted-foreground text-center mb-4">
+                  Connect to your Shopify store to view products
                 </p>
                 <Button onClick={() => setIsConnectOpen(true)}>
                   <Zap className="mr-2 h-4 w-4" />

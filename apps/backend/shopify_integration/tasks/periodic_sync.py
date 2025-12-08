@@ -3,17 +3,25 @@
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 
 from celery import shared_task
+from django.utils import timezone
 
-from ..models import ShopifyIntegration
+from ..models import ShopifyIntegration, SyncQueueItem
+from ..services import SyncQueueService
 
 logger = logging.getLogger(__name__)
 
 
 @shared_task
-def sync_shopify_products_periodic() -> str:
-    """Periodic task to sync products for all active integrations."""
+def sync_shopify_products_periodic(use_queue: bool = True) -> str:
+    """
+    Periodic task to sync products for all active integrations.
+    
+    Args:
+        use_queue: If True, enqueue sync operations instead of running immediately
+    """
     from .sync_products import sync_shopify_products
     
     active_integrations = ShopifyIntegration.objects.filter(
@@ -25,8 +33,24 @@ def sync_shopify_products_periodic() -> str:
     results = []
     for integration in active_integrations:
         try:
-            result = sync_shopify_products(integration.id)
-            results.append(f"{integration.store_url}: {result}")
+            if use_queue:
+                # Enqueue sync operation
+                queue_service = SyncQueueService(integration)
+                # Schedule sync based on integration's sync frequency
+                scheduled_at = timezone.now() + timedelta(
+                    minutes=integration.sync_frequency_minutes or 15
+                )
+                queue_service.enqueue(
+                    operation='pull_products',
+                    entity_type='products',
+                    priority=SyncQueueItem.PRIORITY_NORMAL,
+                    scheduled_at=scheduled_at,
+                )
+                results.append(f"{integration.store_url}: enqueued")
+            else:
+                # Run sync immediately (legacy behavior)
+                result = sync_shopify_products(integration.id)
+                results.append(f"{integration.store_url}: {result}")
         except Exception as exc:
             logger.error("Periodic product sync failed for %s: %s", integration.store_url, exc)
             results.append(f"{integration.store_url}: error")

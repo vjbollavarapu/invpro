@@ -5,6 +5,7 @@ from .models import Product, StockMovement
 class ProductSerializer(serializers.ModelSerializer):
     """Serializer for Product model"""
     total_value = serializers.SerializerMethodField()
+    total_quantity = serializers.SerializerMethodField()
     supplier_name = serializers.CharField(source='supplier.name', read_only=True, allow_null=True)
     supplier_code = serializers.CharField(source='supplier.supplier_code', read_only=True, allow_null=True)
     
@@ -12,15 +13,21 @@ class ProductSerializer(serializers.ModelSerializer):
         model = Product
         fields = [
             "id", "product_code", "sku", "name", "description", "category", "unit",
-            "unit_cost", "selling_price", "quantity", "reorder_level", "status",
+            "unit_cost", "selling_price", "quantity", "committed", "incoming", "reorder_level", "status",
             "supplier", "supplier_name", "supplier_code",
-            "total_value", "created_at", "updated_at"
+            "shopify_id", "shopify_variant_id", "shopify_inventory_item_id", "shopify_location_id",
+            "shopify_handle", "shopify_tags", "data_source",
+            "total_value", "total_quantity", "created_at", "updated_at"
         ]
-        read_only_fields = ["id", "product_code", "total_value", "created_at", "updated_at"]
+        read_only_fields = ["id", "product_code", "total_value", "total_quantity", "created_at", "updated_at"]
     
     def get_total_value(self, obj) -> float:
         """Calculate total value of current stock"""
         return float(obj.quantity * obj.unit_cost)
+    
+    def get_total_quantity(self, obj) -> int:
+        """Calculate total quantity (available + committed + incoming)"""
+        return obj.quantity + obj.committed + obj.incoming
     
     def to_representation(self, instance):
         """Customize output to match frontend expectations"""
@@ -43,7 +50,7 @@ class ProductCreateUpdateSerializer(serializers.ModelSerializer):
         model = Product
         fields = [
             "sku", "name", "description", "category", "unit",
-            "unit_cost", "selling_price", "quantity", "reorder_level",
+            "unit_cost", "selling_price", "quantity", "committed", "incoming", "reorder_level",
             "status", "supplier"
         ]
     

@@ -18,18 +18,21 @@ export function LandingHero() {
           </div>
 
           <h1 className="mb-6 text-4xl font-bold tracking-tight text-balance sm:text-5xl md:text-6xl lg:text-7xl">
-            Complete Inventory & Warehouse Management
+            Your inventory shouldn't need an MBA to manage.
           </h1>
 
           <p className="mb-8 text-lg text-muted-foreground text-balance md:text-xl leading-relaxed max-w-3xl mx-auto">
-            Streamline your inventory, procurement, sales, and shared warehouse operations with InvPro360. The
-            all-in-one platform built for modern businesses.
+            Most inventory tools are built for enterprise suits and jargon junkies. <strong>InvPro360</strong> is built for you - the operator, the doer, the person who actually moves the product.
+          </p>
+          
+          <p className="mb-8 text-base text-muted-foreground/80 italic">
+            <strong>Serious inventory. Stupid easy.</strong> • Real-time, no spreadsheets, no BS.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Button size="lg" asChild className="w-full sm:w-auto">
               <Link href="/register">
-                Start Free Trial
+                Start Free Sync
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
             </Button>

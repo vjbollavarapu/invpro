@@ -64,10 +64,63 @@ class ShopifyApiClient:
             key="inventory_levels",
         )
 
+    # ------------------------------------------------------------------
+    # Write operations (Push to Shopify)
+    # ------------------------------------------------------------------
+
+    def create_product(self, product_data: dict[str, Any]) -> dict[str, Any]:
+        """Create a new product in Shopify."""
+        logger.info("Creating product in Shopify: %s", product_data.get('title', 'Unknown'))
+        response = self._request("POST", "products.json", json={"product": product_data})
+        return response.get("product", {})
+
+    def update_product(self, product_id: str, product_data: dict[str, Any]) -> dict[str, Any]:
+        """Update an existing product in Shopify."""
+        logger.info("Updating product %s in Shopify", product_id)
+        response = self._request("PUT", f"products/{product_id}.json", json={"product": product_data})
+        return response.get("product", {})
+
+    def update_inventory_level(
+        self, location_id: str, inventory_item_id: str, quantity: int
+    ) -> dict[str, Any]:
+        """Update inventory level in Shopify."""
+        logger.info(
+            "Updating inventory level: location_id=%s, inventory_item_id=%s, quantity=%d",
+            location_id,
+            inventory_item_id,
+            quantity,
+        )
+        data = {
+            "location_id": location_id,
+            "inventory_item_id": inventory_item_id,
+            "available": quantity,
+        }
+        response = self._request("POST", "inventory_levels/set.json", json=data)
+        return response.get("inventory_level", {})
+
+    def create_order(self, order_data: dict[str, Any]) -> dict[str, Any]:
+        """Create a new order in Shopify."""
+        logger.info("Creating order in Shopify")
+        response = self._request("POST", "orders.json", json={"order": order_data})
+        return response.get("order", {})
+
+    def update_order(self, order_id: str, order_data: dict[str, Any]) -> dict[str, Any]:
+        """Update an existing order in Shopify."""
+        logger.info("Updating order %s in Shopify", order_id)
+        response = self._request("PUT", f"orders/{order_id}.json", json={"order": order_data})
+        return response.get("order", {})
+
     def test_connection(self) -> dict[str, Any]:
         """Test the Shopify connection by fetching shop information."""
         try:
-            # Log connection test details for debugging
+            # Log connection test details for debugging - use print for visibility
+            print(f"[SHOPIFY DEBUG] Testing connection:")
+            print(f"  store_url: {self.integration.store_url}")
+            print(f"  has_token: {bool(self.integration.access_token)}")
+            print(f"  token_length: {len(self.integration.access_token) if self.integration.access_token else 0}")
+            print(f"  token_preview: {self.integration.access_token[:20] if self.integration.access_token else 'None'}...")
+            print(f"  api_version: {self.integration.api_version}")
+            
             logger.info(
                 "Testing Shopify connection: store_url=%s, has_token=%s, api_version=%s",
                 self.integration.store_url,
@@ -185,18 +238,33 @@ class ShopifyApiClient:
             time.sleep(0.1)  # Brief pause before retry
 
         url = self._build_url(endpoint)
+        
+        # Ensure access token is clean (no extra spaces)
+        access_token = self.integration.access_token.strip() if self.integration.access_token else ""
+        
         headers = {
-            "X-Shopify-Access-Token": self.integration.access_token,
+            "X-Shopify-Access-Token": access_token,
             "Content-Type": "application/json",
         }
         
-        # Log request details for debugging (without sensitive data)
-        token_preview = self.integration.access_token[:20] + "..." if self.integration.access_token else "None"
+        # Log request details for debugging - use print for visibility
+        token_preview = access_token[:20] + "..." if access_token else "None"
+        token_length = len(access_token) if access_token else 0
+        print(f"[SHOPIFY DEBUG] Making request:")
+        print(f"  method: {method}")
+        print(f"  endpoint: {endpoint}")
+        print(f"  url: {url}")
+        print(f"  token_length: {token_length}")
+        print(f"  token_preview: {token_preview}")
+        print(f"  store_url: {self.integration.store_url}")
+        print(f"  api_version: {self.integration.api_version}")
+        
         logger.info(
-            "Shopify API request: method=%s, endpoint=%s, url=%s, token_preview=%s, store_url=%s, api_version=%s",
+            "Shopify API request: method=%s, endpoint=%s, url=%s, token_length=%d, token_preview=%s, store_url=%s, api_version=%s",
             method,
             endpoint,
             url,
+            token_length,
             token_preview,
             self.integration.store_url,
             self.integration.api_version,
@@ -206,7 +274,37 @@ class ShopifyApiClient:
         last_exception = None
         for attempt in range(SHOPIFY_MAX_RETRY_ATTEMPTS if retry else 1):
             try:
-                response = self.session.request(method, url, params=params, json=json, timeout=30)
+                # Debug: Print the exact headers being sent
+                print(f"[SHOPIFY DEBUG] Request details:")
+                print(f"  URL: {url}")
+                print(f"  Method: {method}")
+                print(f"  Token (full): '{access_token}'")
+                print(f"  Token length: {len(access_token)}")
+                print(f"  Token starts with: {access_token[:6] if access_token else 'None'}")
+                print(f"  Token ends with: {access_token[-10:] if len(access_token) > 10 else access_token}")
+                print(f"  Headers being sent: {list(headers.keys())}")
+                print(f"  Header X-Shopify-Access-Token value: '{headers.get('X-Shopify-Access-Token', 'MISSING')}'")
+                print(f"  Header X-Shopify-Access-Token length: {len(headers.get('X-Shopify-Access-Token', ''))}")
+                
+                # Test with direct requests to compare
+                import requests as req_lib
+                test_response = req_lib.get(
+                    url,
+                    headers={
+                        "X-Shopify-Access-Token": access_token,
+                        "Content-Type": "application/json",
+                    },
+                    timeout=30
+                )
+                print(f"[SHOPIFY DEBUG] Direct requests test:")
+                print(f"  status_code: {test_response.status_code}")
+                print(f"  response_text: {test_response.text[:200]}")
+                
+                response = self.session.request(method, url, params=params, json=json, timeout=30, headers=headers)
+                
+                print(f"[SHOPIFY DEBUG] Session request response:")
+                print(f"  status_code: {response.status_code}")
+                print(f"  response_text: {response.text[:200]}")
                 
                 if response.status_code >= 400:
                     # Don't retry on 4xx errors (client errors)
@@ -225,9 +323,11 @@ class ShopifyApiClient:
                                 'api_version': self.integration.api_version,
                                 'token_length': len(self.integration.access_token) if self.integration.access_token else 0,
                                 'token_starts_with': self.integration.access_token[:10] if self.integration.access_token else None,
+                                'headers_sent': {k: v[:20] + '...' if len(v) > 20 else v for k, v in headers.items() if k != 'X-Shopify-Access-Token'},
                             }
                         )
-                        raise ShopifyApiError(error_text)
+                        # Include status code in error message for better debugging
+                        raise ShopifyApiError(f"[{response.status_code}] {error_text}")
                     
                     # Retry on 5xx errors (server errors)
                     if attempt < SHOPIFY_MAX_RETRY_ATTEMPTS - 1:
@@ -278,7 +378,22 @@ class ShopifyApiClient:
         base_url = f"https://{base_url}"
         api_root = f"/admin/api/{self.integration.api_version}/"
         full_url = urljoin(base_url + "/", api_root + endpoint)
-        logger.debug(f"Built Shopify URL: {full_url}")
+        
+        # Use print for visibility
+        print(f"[SHOPIFY DEBUG] Building URL:")
+        print(f"  original store_url: {self.integration.store_url}")
+        print(f"  cleaned base_url: {base_url}")
+        print(f"  api_version: {self.integration.api_version}")
+        print(f"  endpoint: {endpoint}")
+        print(f"  final URL: {full_url}")
+        
+        logger.info(
+            "Built Shopify URL: %s (from store_url=%s, api_version=%s, endpoint=%s)",
+            full_url,
+            self.integration.store_url,
+            self.integration.api_version,
+            endpoint
+        )
         return full_url
 
     @staticmethod

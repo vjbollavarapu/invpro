@@ -32,12 +32,49 @@ class ShopifyProduct(ShopifyBaseModel):
     synced_at = models.DateTimeField(null=True, blank=True)
     published_at = models.DateTimeField(null=True, blank=True)
 
+    # Sync status tracking for bidirectional sync
+    sync_status = models.CharField(
+        max_length=20,
+        choices=[
+            ('pending', 'Pending'),
+            ('synced', 'Synced'),
+            ('conflict', 'Conflict'),
+            ('error', 'Error'),
+        ],
+        default='pending',
+        help_text="Sync status for bidirectional synchronization",
+    )
+    last_pulled_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp of last successful pull from Shopify",
+    )
+    last_pushed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp of last successful push to Shopify",
+    )
+    pending_push = models.BooleanField(
+        default=False,
+        help_text="Whether this product has pending changes to push to Shopify",
+    )
+    last_push_error = models.TextField(
+        blank=True,
+        help_text="Error message from last failed push attempt",
+    )
+    conflict_data = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Stores conflict information when sync conflicts are detected",
+    )
+
     class Meta:
         unique_together = ("integration", "shopify_product_id")
         ordering = ["title"]
         indexes = [
             models.Index(fields=["integration", "shopify_product_id"]),
             models.Index(fields=["tenant_id", "title"]),
+            models.Index(fields=["sync_status", "pending_push"], name="shopify_prod_sync_idx"),
         ]
 
     def __str__(self) -> str:  # pragma: no cover - representation only

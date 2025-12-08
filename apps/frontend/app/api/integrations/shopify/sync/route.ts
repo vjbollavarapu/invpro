@@ -28,16 +28,61 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // TODO: Implement sync endpoint in backend or trigger Celery task directly
-    // For now, return a placeholder response
-    return NextResponse.json(
-      { message: "Sync endpoint not yet implemented. Use Celery tasks directly." },
-      { status: 501 }
-    )
+    const headers = getAuthHeaders(request)
+
+    console.log('Shopify sync request:', {
+      url: `${API_URL}/shopify/sync/`,
+      type: type,
+      hasAuth: !!headers['Authorization'],
+      hasTenant: !!headers['X-Tenant-ID'],
+    })
+
+    const response = await fetch(`${API_URL}/shopify/sync/`, {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify({
+        type: type,
+        ...(limit && { limit }),
+      }),
+    })
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}))
+      console.error('Shopify sync error:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: error,
+      })
+
+      let errorMessage = "Failed to sync Shopify data"
+      if (error.error) {
+        errorMessage = error.error
+      } else if (error.detail) {
+        errorMessage = error.detail
+      } else if (error.message) {
+        errorMessage = error.message
+      }
+
+      return NextResponse.json(
+        {
+          error: errorMessage,
+          details: error,
+          status: response.status
+        },
+        { status: response.status }
+      )
+    }
+
+    const data = await response.json()
+    return NextResponse.json(data)
   } catch (error) {
     console.error("Shopify sync error:", error)
+    const errorMessage = error instanceof Error ? error.message : "Failed to sync Shopify data"
     return NextResponse.json(
-      { error: "Failed to sync Shopify data" },
+      {
+        error: errorMessage,
+        details: error instanceof Error ? error.stack : String(error)
+      },
       { status: 500 }
     )
   }

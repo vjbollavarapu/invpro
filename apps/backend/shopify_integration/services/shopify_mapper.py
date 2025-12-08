@@ -14,16 +14,16 @@ class ShopifyMapper:
         prices = [ShopifyMapper._safe_decimal(v.get('price')) for v in variants if v.get('price')]
         normalized = {
             'shopify_product_id': str(payload.get('id')),
-            'title': payload.get('title', ''),
-            'status': payload.get('status', ''),
-            'product_type': payload.get('product_type', ''),
-            'vendor': payload.get('vendor', ''),
-            'tags': payload.get('tags', ''),
-            'handle': payload.get('handle', ''),
+            'title': payload.get('title') or '',
+            'status': payload.get('status') or '',
+            'product_type': payload.get('product_type') or '',
+            'vendor': payload.get('vendor') or '',
+            'tags': payload.get('tags') or '',
+            'handle': payload.get('handle') or '',
             'options': payload.get('options') or [],
             'variants': variants,
             'images': payload.get('images') or [],
-            'body_html': payload.get('body_html', ''),
+            'body_html': payload.get('body_html') or '',  # Handle None values explicitly
             'price_min': min(prices) if prices else None,
             'price_max': max(prices) if prices else None,
             'published_at': payload.get('published_at'),

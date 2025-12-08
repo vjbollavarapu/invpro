@@ -284,11 +284,13 @@ export default function InventoryPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Product ID</TableHead>
                       <TableHead>Name</TableHead>
                       <TableHead>SKU</TableHead>
                       <TableHead>Category</TableHead>
-                      <TableHead className="text-right">Quantity</TableHead>
+                      <TableHead className="text-right">Available</TableHead>
+                      <TableHead className="text-right">Committed</TableHead>
+                      <TableHead className="text-right">Incoming</TableHead>
+                      <TableHead className="text-right">Total</TableHead>
                       <TableHead className="text-right">Unit Cost</TableHead>
                       <TableHead className="text-right">Total Value</TableHead>
                       <TableHead>Warehouse</TableHead>
@@ -316,17 +318,25 @@ export default function InventoryPage() {
                       </>
                     ) : products.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={10} className="text-center py-8">No products found</TableCell>
+                        <TableCell colSpan={12} className="text-center py-8">No products found</TableCell>
                       </TableRow>
                     ) : (
                       products.map((product) => (
                       <TableRow key={product.id}>
-                        <TableCell className="font-medium">{product.id}</TableCell>
                         <TableCell>{product.name}</TableCell>
                         <TableCell className="text-muted-foreground">{product.sku}</TableCell>
                         <TableCell>{product.category}</TableCell>
-                        <TableCell className="text-right">
-                          {product.quantity} {product.unit}
+                        <TableCell className="text-right font-medium">
+                          {product.quantity || 0} {product.unit}
+                        </TableCell>
+                        <TableCell className="text-right text-blue-600">
+                          {product.committed || 0} {product.unit}
+                        </TableCell>
+                        <TableCell className="text-right text-green-600">
+                          {product.incoming || 0} {product.unit}
+                        </TableCell>
+                        <TableCell className="text-right font-semibold">
+                          {(product.quantity || 0) + (product.committed || 0) + (product.incoming || 0)} {product.unit}
                         </TableCell>
                         <TableCell className="text-right">${Number(product.unitCost || 0).toFixed(2)}</TableCell>
                         <TableCell className="text-right font-medium">${Number(product.totalValue || 0).toLocaleString()}</TableCell>
@@ -373,7 +383,7 @@ export default function InventoryPage() {
               </div>
               
               {/* Pagination */}
-              {products.length > 0 && (
+              {totalPages > 1 && (
                 <div className="mt-4">
                   <Pagination
                     currentPage={currentPage}
@@ -404,7 +414,10 @@ export default function InventoryPage() {
                     <TableRow>
                       <TableHead>Product</TableHead>
                       <TableHead>SKU</TableHead>
-                      <TableHead className="text-right">Current Stock</TableHead>
+                      <TableHead className="text-right">Available</TableHead>
+                      <TableHead className="text-right">Committed</TableHead>
+                      <TableHead className="text-right">Incoming</TableHead>
+                      <TableHead className="text-right">Total</TableHead>
                       <TableHead className="text-right">Reorder Level</TableHead>
                       <TableHead>Warehouse</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
@@ -416,7 +429,16 @@ export default function InventoryPage() {
                         <TableCell className="font-medium">{product.name}</TableCell>
                         <TableCell className="text-muted-foreground">{product.sku}</TableCell>
                         <TableCell className="text-right text-yellow-600 font-medium">
-                          {product.quantity} {product.unit}
+                          {product.quantity || 0} {product.unit}
+                        </TableCell>
+                        <TableCell className="text-right text-blue-600">
+                          {product.committed || 0} {product.unit}
+                        </TableCell>
+                        <TableCell className="text-right text-green-600">
+                          {product.incoming || 0} {product.unit}
+                        </TableCell>
+                        <TableCell className="text-right font-semibold">
+                          {(product.quantity || 0) + (product.committed || 0) + (product.incoming || 0)} {product.unit}
                         </TableCell>
                         <TableCell className="text-right">
                           {product.reorderLevel} {product.unit}

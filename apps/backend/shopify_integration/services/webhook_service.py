@@ -7,7 +7,12 @@ from typing import Any, Callable
 
 from django.utils import timezone
 
-from ..models import ShopifyIntegration, ShopifySyncLog
+from ..models import (
+    ShopifyIntegration,
+    ShopifyInventoryLevel,
+    ShopifyProduct,
+    ShopifySyncLog,
+)
 from ..utils.hmac_validator import validate_shopify_hmac
 from .shopify_mapper import ShopifyMapper
 from .shopify_upsert import ShopifyUpsert
@@ -51,7 +56,23 @@ class ShopifyWebhookService:
     # ------------------------------------------------------------------
     def _handle_product(self, payload: dict[str, Any]) -> None:
         mapped = ShopifyMapper.normalize_product(payload)
-        ShopifyUpsert.upsert_product(self.integration, mapped)
+        product, created = ShopifyUpsert.upsert_product(self.integration, mapped)
+        
+        # Update sync status - webhook confirms Shopify has the latest data
+        # This means our push was successful (if we had pending push)
+        product.sync_status = 'synced'
+        product.last_pulled_at = timezone.now()
+        if product.pending_push:
+            # Webhook confirms our push was received
+            product.last_pushed_at = timezone.now()
+            product.pending_push = False
+        product.save(update_fields=['sync_status', 'last_pulled_at', 'last_pushed_at', 'pending_push'])
+        
+        logger.info(
+            "Product webhook processed: %s (shopify_id: %s)",
+            product.title,
+            product.shopify_product_id,
+        )
         self._record_webhook(ShopifySyncLog.ENTITY_PRODUCTS, payload)
 
     def _handle_order(self, payload: dict[str, Any]) -> None:
@@ -66,7 +87,23 @@ class ShopifyWebhookService:
 
     def _handle_inventory(self, payload: dict[str, Any]) -> None:
         mapped = ShopifyMapper.normalize_inventory_level(payload)
-        ShopifyUpsert.upsert_inventory(self.integration, mapped)
+        inventory, created = ShopifyUpsert.upsert_inventory(self.integration, mapped)
+        
+        # Update sync status - webhook confirms Shopify has the latest data
+        # This means our push was successful (if we had pending push)
+        inventory.sync_status = 'synced'
+        inventory.last_pulled_at = timezone.now()
+        if inventory.pending_push:
+            # Webhook confirms our push was received
+            inventory.last_pushed_at = timezone.now()
+            inventory.pending_push = False
+        inventory.save(update_fields=['sync_status', 'last_pulled_at', 'last_pushed_at', 'pending_push'])
+        
+        logger.info(
+            "Inventory webhook processed: item_id=%s, location_id=%s",
+            inventory.shopify_inventory_item_id,
+            inventory.shopify_location_id,
+        )
         self._record_webhook(ShopifySyncLog.ENTITY_INVENTORY, payload)
 
     def _record_webhook(self, entity: str, payload: dict[str, Any]) -> None:

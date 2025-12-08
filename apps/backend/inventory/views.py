@@ -3,12 +3,15 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from django.db import models
+import logging
 from .models import Product, StockMovement
 from .serializers import (
     ProductSerializer, ProductCreateUpdateSerializer,
     StockMovementSerializer, StockAdjustmentSerializer
 )
 from tenants.permissions import TenantPermissionMixin
+
+logger = logging.getLogger(__name__)
 
 
 class TenantScopedMixin:
@@ -122,6 +125,30 @@ class ProductViewSet(TenantScopedMixin, viewsets.ModelViewSet):
                 performed_by=request.user,
                 destination_warehouse_id=data.get('warehouse_id')
             )
+            
+            # Sync inventory to Shopify if product is from Shopify
+            if product.data_source == 'shopify' and product.shopify_inventory_item_id and product.shopify_location_id:
+                try:
+                    from shopify_integration.models import ShopifyIntegration
+                    from shopify_integration.services import ProductInventorySyncService
+                    
+                    integration = ShopifyIntegration.objects.filter(
+                        tenant_id=request.tenant.id,
+                        status='CONNECTED'
+                    ).first()
+                    
+                    if integration:
+                        sync_service = ProductInventorySyncService(integration)
+                        sync_result = sync_service.sync_product_inventory_to_shopify(product)
+                        if not sync_result.get('success'):
+                            logger.warning(
+                                "Failed to sync inventory to Shopify for product %s: %s",
+                                product.id,
+                                sync_result.get('error', 'Unknown error')
+                            )
+                except Exception as e:
+                    logger.exception("Error syncing inventory to Shopify: %s", str(e))
+                    # Don't fail the request if Shopify sync fails
             
             return Response(ProductSerializer(product).data)
         

@@ -4,7 +4,7 @@ Central API views for dashboard statistics and multi-tenant management.
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from django.db.models import Sum, Count, Q, Avg
+from django.db.models import Sum, Count, Q, Avg, F
 from django.utils import timezone
 from datetime import timedelta
 
@@ -108,6 +108,8 @@ class DashboardViewSet(viewsets.ViewSet):
         Get inventory-specific dashboard stats.
         GET /api/dashboard/inventory_stats/
         """
+        from sales.models import OrderItem
+        
         tenant = self.get_tenant()
         if not tenant:
             return Response({'error': 'No tenant specified'}, status=status.HTTP_400_BAD_REQUEST)
@@ -135,6 +137,51 @@ class DashboardViewSet(viewsets.ViewSet):
             timestamp__gte=seven_days_ago
         ).count()
         
+        # Calculate sales velocity for products (last 30 days)
+        thirty_days_ago = timezone.now() - timedelta(days=30)
+        product_sales = {}
+        
+        # Get sales data for products
+        order_items = OrderItem.objects.filter(
+            tenant_id=tenant.id,
+            order__order_date__gte=thirty_days_ago.date()
+        ).values('product_id').annotate(
+            total_sold=Sum('quantity'),
+            total_revenue=Sum(F('quantity') * F('price'))
+        )
+        
+        for item in order_items:
+            product_sales[item['product_id']] = {
+                'total_sold': item['total_sold'],
+                'total_revenue': float(item['total_revenue'] or 0),
+                'daily_average': item['total_sold'] / 30.0,
+            }
+        
+        # Add sales velocity to product data
+        products_with_velocity = []
+        for product in products[:100]:  # Limit to first 100 for performance
+            sales_data = product_sales.get(product.id, {
+                'total_sold': 0,
+                'total_revenue': 0,
+                'daily_average': 0,
+            })
+            
+            # Calculate days until out of stock
+            days_until_out = None
+            if sales_data['daily_average'] > 0:
+                days_until_out = int(product.quantity / sales_data['daily_average'])
+            
+            products_with_velocity.append({
+                'product_id': product.id,
+                'name': product.name,
+                'quantity': product.quantity,
+                'reorder_level': product.reorder_level,
+                'sales_30d': sales_data['total_sold'],
+                'revenue_30d': sales_data['total_revenue'],
+                'daily_average': round(sales_data['daily_average'], 2),
+                'days_until_out': days_until_out,
+            })
+        
         return Response({
             'total_products': products.count(),
             'total_stock_value': sum(p.quantity * p.unit_cost for p in products),
@@ -145,6 +192,7 @@ class DashboardViewSet(viewsets.ViewSet):
             },
             'by_category': list(by_category),
             'recent_movements_7d': recent_movements,
+            'sales_velocity': products_with_velocity[:20],  # Return top 20 for performance
         })
     
     @action(detail=False, methods=['get'])

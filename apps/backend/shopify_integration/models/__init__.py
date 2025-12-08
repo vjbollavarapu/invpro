@@ -7,6 +7,7 @@ from .shopify_order import ShopifyOrder
 from .shopify_customer import ShopifyCustomer
 from .shopify_inventory import ShopifyInventoryLevel
 from .sync_log import ShopifySyncLog
+from .sync_queue import SyncQueueItem
 
 __all__ = [
     'ShopifyBaseModel',
@@ -16,4 +17,5 @@ __all__ = [
     'ShopifyCustomer',
     'ShopifyInventoryLevel',
     'ShopifySyncLog',
+    'SyncQueueItem',
 ]

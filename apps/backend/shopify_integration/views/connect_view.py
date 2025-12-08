@@ -76,11 +76,20 @@ class ShopifyConnectView(APIView):
         # Log credentials (without sensitive parts) for debugging
         import logging
         logger = logging.getLogger(__name__)
+        print(f"[SHOPIFY DEBUG] Connection attempt received:")
+        print(f"  store_url: '{store_url}'")
+        print(f"  access_token (full): '{access_token}'")
+        print(f"  token_length: {len(access_token)}")
+        print(f"  token_starts_with: {access_token[:10] if len(access_token) > 10 else access_token}")
+        print(f"  token_ends_with: {access_token[-10:] if len(access_token) > 10 else access_token}")
+        print(f"  api_version: {payload.get('api_version', '2024-10')}")
+        
         logger.info(
-            "Shopify connection attempt: store_url=%s, token_length=%d, token_preview=%s, api_version=%s",
+            "Shopify connection attempt: store_url=%s, token_length=%d, token_preview=%s, token_ends_with=%s, api_version=%s",
             store_url,
             len(access_token),
             access_token[:10] + "..." if len(access_token) > 10 else access_token,
+            "..." + access_token[-10:] if len(access_token) > 10 else access_token,
             payload.get('api_version', '2024-10'),
         )
         
@@ -166,6 +175,16 @@ class ShopifyConnectView(APIView):
             defaults=defaults,
         )
 
+        # Verify credentials were saved correctly
+        integration.refresh_from_db()
+        logger.info(
+            "Shopify integration %s: api_key_length=%d, api_secret_length=%d, access_token_length=%d",
+            "created" if created else "updated",
+            len(integration.api_key) if integration.api_key else 0,
+            len(integration.api_secret) if integration.api_secret else 0,
+            len(integration.access_token) if integration.access_token else 0,
+        )
+
         data = self._serialize_integration(integration)
         if temp_integration.access_token:
             data['connection_test'] = test_result
@@ -202,10 +221,24 @@ class ShopifyConnectView(APIView):
         }
 
     @staticmethod
-    def _resolve_tenant_id(request) -> str:
+    def _resolve_tenant_id(request):
+        """Resolve tenant_id from request. Returns UUID string."""
+        import uuid
+        
         tenant = getattr(request, 'tenant', None)
         if tenant:
-            return str(getattr(tenant, 'id', tenant))
+            tenant_id = getattr(tenant, 'id', None)
+            if tenant_id:
+                # Convert integer tenant ID to UUID format
+                # Using a deterministic UUID v5 based on tenant ID
+                # This ensures the same tenant ID always maps to the same UUID
+                namespace = uuid.UUID('6ba7b810-9dad-11d1-80b4-00c04fd430c8')  # DNS namespace
+                tenant_uuid = uuid.uuid5(namespace, f'tenant_{tenant_id}')
+                print(f"[SHOPIFY DEBUG] Resolved tenant_id: tenant.id={tenant_id} -> UUID={tenant_uuid}")
+                return str(tenant_uuid)
+        
         if hasattr(request.user, 'tenant_id') and request.user.tenant_id:
+            # If user has tenant_id attribute, use it directly (assuming it's already UUID)
             return str(request.user.tenant_id)
+        
         raise serializers.ValidationError('Tenant context required for Shopify integration.')

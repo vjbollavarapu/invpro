@@ -77,6 +77,22 @@ export async function POST(request: NextRequest) {
     }
 
     if (!response.ok) {
+      // Handle 401 - Token expired, need to refresh or re-login
+      if (response.status === 401) {
+        const error = await response.json().catch(() => ({}))
+        console.error('Authentication failed - token expired:', error)
+        
+        return NextResponse.json(
+          { 
+            error: "Your session has expired. Please log out and log back in.",
+            code: "token_expired",
+            details: error,
+            status: 401
+          },
+          { status: 401 }
+        )
+      }
+      
       const error = await response.json().catch(() => ({}))
       console.error('Shopify connection error:', {
         status: response.status,
@@ -93,8 +109,6 @@ export async function POST(request: NextRequest) {
         errorMessage = error.error
       } else if (error.message) {
         errorMessage = error.message
-      } else if (response.status === 401) {
-        errorMessage = "Authentication failed. Please check your login session."
       } else if (response.status === 403) {
         errorMessage = "Access denied. Please check your permissions."
       } else if (response.status === 404) {

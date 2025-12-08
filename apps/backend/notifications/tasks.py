@@ -3,11 +3,13 @@ from django.core.mail import send_mail, send_mass_mail
 from django.conf import settings
 from django.utils import timezone
 from datetime import timedelta
+from django.db import models
 from inventory.models import Product
 from sales.models import Order
 from notifications.models import Notification
 from tenants.models import Tenant, Membership
 from users.models import User
+from procurement.models import PurchaseOrder
 
 
 @shared_task
@@ -66,6 +68,13 @@ InvPro360 Inventory Management System
                 notification_type='warning',
                 link=f'/dashboard/inventory',
             )
+        
+        # Auto-generate Purchase Order if product has supplier (inventory.wtf feature: "No More Fire Drills")
+        if product.supplier:
+            try:
+                auto_create_po_for_low_stock(product, tenant)
+            except Exception as e:
+                logger.error(f"Failed to auto-create PO for {product.name}: {str(e)}")
         
         return f"Low stock alert sent for {product.name}"
     except Exception as e:
@@ -133,6 +142,144 @@ def check_low_stock_alerts():
             products_checked += 1
     
     return f"Checked {products_checked} products, sent {alerts_sent} alerts"
+
+
+def auto_create_po_for_low_stock(product: Product, tenant: Tenant):
+    """
+    Automatically create a purchase order for a low stock product.
+    This implements the "No More Fire Drills" feature from inventory.wtf.
+    
+    Args:
+        product: Product that is low on stock
+        tenant: Tenant instance
+        
+    Returns:
+        PurchaseOrder instance if created, None otherwise
+    """
+    from procurement.models import PurchaseOrder
+    
+    if not product.supplier:
+        logger.info(f"Product {product.name} has no supplier, skipping auto-PO")
+        return None
+    
+    # Calculate suggested quantity: order enough to bring stock to 2x reorder level
+    suggested_quantity = max(
+        (product.reorder_level * 2) - product.quantity,
+        product.reorder_level  # At minimum, order reorder_level amount
+    )
+    
+    # Check if there's already a draft/pending PO for this supplier
+    existing_po = PurchaseOrder.objects.filter(
+        tenant_id=tenant.id,
+        supplier=product.supplier,
+        status__in=['draft', 'pending'],
+    ).first()
+    
+    if existing_po:
+        logger.info(f"Existing PO {existing_po.po_number} found for supplier {product.supplier.name}")
+        # For now, just log - in future we could add items to existing PO
+        return existing_po
+    
+    # Create new draft PO (user can review and approve)
+    unit_cost = float(product.unit_cost) if product.unit_cost else 0.0
+    po = PurchaseOrder.objects.create(
+        tenant_id=tenant.id,
+        supplier=product.supplier,
+        total_amount=suggested_quantity * unit_cost,
+        status='draft',  # Start as draft so user can review
+        expected_delivery_date=timezone.now().date() + timedelta(days=7),  # Default 7 days
+    )
+    
+    logger.info(
+        f"Auto-created draft PO {po.po_number} for {product.name} "
+        f"(quantity: {suggested_quantity}, supplier: {product.supplier.name})"
+    )
+    
+    # Create notification about auto-created PO
+    admin_memberships = Membership.objects.filter(
+        tenant=tenant,
+        role__in=['admin', 'manager'],
+        is_active=True
+    )
+    for membership in admin_memberships:
+        Notification.objects.create(
+            tenant=tenant,
+            user=membership.user,
+            title=f'Auto-Created PO: {product.name}',
+            message=f'Draft purchase order {po.po_number} created automatically for {product.name} (quantity: {suggested_quantity}). Please review and approve.',
+            notification_type='info',
+            link=f'/dashboard/procurement',
+        )
+    
+    return po
+
+
+def auto_create_po_for_low_stock(product: Product, tenant: Tenant) -> PurchaseOrder | None:
+    """
+    Automatically create a purchase order for a low stock product.
+    This implements the "No More Fire Drills" feature from inventory.wtf.
+    
+    Args:
+        product: Product that is low on stock
+        tenant: Tenant instance
+        
+    Returns:
+        PurchaseOrder instance if created, None otherwise
+    """
+    if not product.supplier:
+        logger.info(f"Product {product.name} has no supplier, skipping auto-PO")
+        return None
+    
+    # Calculate suggested quantity: order enough to bring stock to 2x reorder level
+    suggested_quantity = max(
+        (product.reorder_level * 2) - product.quantity,
+        product.reorder_level  # At minimum, order reorder_level amount
+    )
+    
+    # Check if there's already a draft/pending PO for this supplier (to avoid duplicates)
+    existing_po = PurchaseOrder.objects.filter(
+        tenant_id=tenant.id,
+        supplier=product.supplier,
+        status__in=['draft', 'pending'],
+    ).first()
+    
+    if existing_po:
+        logger.info(f"Existing draft PO {existing_po.po_number} found for supplier {product.supplier.name}")
+        # For now, just return existing - in future we could add items to existing PO
+        return existing_po
+    
+    # Create new draft PO (user can review and approve)
+    unit_cost = float(product.unit_cost) if product.unit_cost else 0.0
+    po = PurchaseOrder.objects.create(
+        tenant_id=tenant.id,
+        supplier=product.supplier,
+        total_amount=suggested_quantity * unit_cost,
+        status='draft',  # Start as draft so user can review
+        expected_delivery_date=timezone.now().date() + timedelta(days=7),  # Default 7 days
+    )
+    
+    logger.info(
+        f"Auto-created draft PO {po.po_number} for {product.name} "
+        f"(quantity: {suggested_quantity}, supplier: {product.supplier.name}, total: ${po.total_amount})"
+    )
+    
+    # Create notification about auto-created PO
+    admin_memberships = Membership.objects.filter(
+        tenant=tenant,
+        role__in=['admin', 'manager'],
+        is_active=True
+    )
+    for membership in admin_memberships:
+        Notification.objects.create(
+            tenant=tenant,
+            user=membership.user,
+            title=f'Auto-Created PO: {product.name}',
+            message=f'Draft purchase order {po.po_number} created automatically for {product.name} (quantity: {suggested_quantity}). Please review and approve.',
+            notification_type='info',
+            link=f'/dashboard/procurement',
+        )
+    
+    return po
 
 
 @shared_task

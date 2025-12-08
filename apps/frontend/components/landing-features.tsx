@@ -1,36 +1,36 @@
-import { Package, TrendingUp, Warehouse, Users, BarChart3, Shield } from "lucide-react"
+import { Zap, Package, TrendingUp, FileText, AlertTriangle, RefreshCw } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 
 const features = [
   {
+    icon: Zap,
+    title: "Instant Sync",
+    description: "Real-time updates across Shopify, Xero, and beyond. Your numbers match everywhere.",
+  },
+  {
     icon: Package,
-    title: "Inventory Management",
-    description: "Track stock levels, manage SKUs, and automate reordering with real-time inventory insights.",
+    title: "Smart Tracking",
+    description: "See exactly what's in, what's sold, and what's slipping - with low-stock alerts.",
+  },
+  {
+    icon: FileText,
+    title: "Zero-Bullshit Reports",
+    description: "Get the numbers that matter. No jargon. No fluff. Just clarity.",
+  },
+  {
+    icon: AlertTriangle,
+    title: "No More Fire Drills",
+    description: "Automated POs and alerts keep you two steps ahead, not two days behind.",
   },
   {
     icon: TrendingUp,
-    title: "Procurement & Sales",
-    description: "Streamline purchasing workflows and sales orders with integrated procurement management.",
+    title: "No More Guessing",
+    description: "Real-time counts across every channel. Know what you can sell - before your customers do.",
   },
   {
-    icon: Warehouse,
-    title: "Shared Warehouses",
-    description: "Manage multiple warehouse locations with shared inventory and cross-location transfers.",
-  },
-  {
-    icon: Users,
-    title: "Team Collaboration",
-    description: "Enable seamless collaboration with role-based access and real-time updates for your team.",
-  },
-  {
-    icon: BarChart3,
-    title: "Analytics & Reports",
-    description: "Make data-driven decisions with comprehensive analytics and customizable reporting tools.",
-  },
-  {
-    icon: Shield,
-    title: "Enterprise Security",
-    description: "Bank-level security with encrypted data, audit logs, and compliance-ready infrastructure.",
+    icon: RefreshCw,
+    title: "No Spreadsheet Hell",
+    description: "One dashboard, one source of truth, zero headaches.",
   },
 ]
 
@@ -40,10 +40,10 @@ export function LandingFeatures() {
       <div className="container mx-auto px-4">
         <div className="mx-auto max-w-2xl text-center mb-16">
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl md:text-5xl mb-4 text-balance">
-            Everything you need to manage your inventory
+            Here's the WTF moment, InvPro360 just works.
           </h2>
           <p className="text-lg text-muted-foreground text-balance">
-            Powerful features designed to streamline your warehouse operations and boost productivity.
+            Plug it in once. Watch your sales channels, stock counts, and purchase orders all sync - automatically. It's like having an ops manager who never sleeps, never complains, and actually knows math.
           </p>
         </div>
 
